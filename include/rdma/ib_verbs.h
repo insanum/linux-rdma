@@ -2084,6 +2084,13 @@ struct ib_mr {
 		struct list_head	qp_entry;	/* FR */
 	};
 
+	/* the job this region is restricted to, NULL if it is unrestricted */
+	struct ib_jkey	  *jkey;
+	/* the region this one was derived from, NULL if registered fresh */
+	struct ib_mr	  *parent;
+	/* regions derived from this one that are still registered */
+	atomic_t	   usecnt;
+
 	struct ib_dm      *dm;
 	struct ib_sig_attrs *sig_attrs; /* only for IB_MR_TYPE_INTEGRITY MRs */
 	struct ib_dmah *dmah;
@@ -2096,6 +2103,25 @@ struct ib_mr {
 	 * Implementation details of the RDMA core, don't use in drivers:
 	 */
 	struct rdma_restrack_entry res;
+};
+
+struct ib_mr_ex_attr {
+	u64			addr;
+	u64			length;
+	u64			iova;
+	u32			access_flags;	/* enum ib_access_flags */
+	u32			flags;		/* enum ib_uverbs_reg_mr_flags */
+	int			fd;		/* -1 = host memory addr */
+	u64			fd_offset;
+	struct ib_dmah		*dmah;
+	/* bind the region to a job, NULL leaves it unrestricted */
+	struct ib_jkey		*jkey;
+	/* carve/derive the region out of this one, NULL registers fresh */
+	struct ib_mr		*parent_mr;
+	/* how many regions the user expects to derive from this one */
+	u32			derive_cnt;
+	/* the key the user chose, valid with IB_UVERBS_REG_MR_USER_RKEY */
+	u64			req_rkey64;
 };
 
 struct ib_mw {
@@ -2813,6 +2839,9 @@ struct ib_device_ops {
 				       u64 length, u64 virt_addr,
 				       int mr_access_flags, struct ib_pd *pd,
 				       struct ib_udata *udata);
+	struct ib_mr *(*reg_user_mr_ex)(struct ib_pd *pd,
+					struct ib_mr_ex_attr *attr,
+					struct ib_udata *udata);
 	int (*dereg_mr)(struct ib_mr *mr, struct ib_udata *udata);
 	int (*query_qp_semantics)(struct ib_device *device,
 				  enum ib_qp_type qp_type,
@@ -4821,6 +4850,20 @@ static inline u32 ib_inc_rkey(u32 rkey)
 {
 	const u32 mask = 0x000000ff;
 	return ((rkey + 1) & mask) | (rkey & ~mask);
+}
+
+/**
+ * ib_mr_init_core_refs - clears what core reads back when an MR is
+ *   deregistered.
+ * @mr: struct ib_mr pointer to initialize.
+ *
+ * A driver's MR need not be zeroed, so every path that makes an MR calls this.
+ */
+static inline void ib_mr_init_core_refs(struct ib_mr *mr)
+{
+	mr->jkey = NULL;
+	mr->parent = NULL;
+	atomic_set(&mr->usecnt, 0);
 }
 
 /**

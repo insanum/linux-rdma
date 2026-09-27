@@ -2358,6 +2358,7 @@ struct ib_mr *ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 	mr->type = IB_MR_TYPE_USER;
 	mr->pd = pd;
 	mr->dm = NULL;
+	ib_mr_init_core_refs(mr);
 	atomic_inc(&pd->usecnt);
 	mr->iova =  virt_addr;
 	mr->length = length;
@@ -2389,6 +2390,8 @@ int ib_dereg_mr_user(struct ib_mr *mr, struct ib_udata *udata)
 	struct ib_pd *pd = mr->pd;
 	struct ib_dm *dm = mr->dm;
 	struct ib_dmah *dmah = mr->dmah;
+	struct ib_jkey *jkey = mr->jkey;
+	struct ib_mr *parent = mr->parent;
 	struct ib_sig_attrs *sig_attrs = mr->sig_attrs;
 	int ret;
 
@@ -2401,6 +2404,10 @@ int ib_dereg_mr_user(struct ib_mr *mr, struct ib_udata *udata)
 			atomic_dec(&dm->usecnt);
 		if (dmah)
 			atomic_dec(&dmah->usecnt);
+		if (jkey)
+			atomic_dec(&jkey->usecnt);
+		if (parent)
+			atomic_dec(&parent->usecnt);
 		kfree(sig_attrs);
 	}
 
@@ -2448,6 +2455,7 @@ struct ib_mr *ib_alloc_mr(struct ib_pd *pd, enum ib_mr_type mr_type,
 	mr->need_inval = false;
 	mr->type = mr_type;
 	mr->sig_attrs = NULL;
+	ib_mr_init_core_refs(mr);
 
 	rdma_restrack_new(&mr->res, RDMA_RESTRACK_MR);
 	rdma_restrack_parent_name(&mr->res, &pd->res);
@@ -2509,6 +2517,7 @@ struct ib_mr *ib_alloc_mr_integrity(struct ib_pd *pd,
 	mr->need_inval = false;
 	mr->type = IB_MR_TYPE_INTEGRITY;
 	mr->sig_attrs = sig_attrs;
+	ib_mr_init_core_refs(mr);
 
 	rdma_restrack_new(&mr->res, RDMA_RESTRACK_MR);
 	rdma_restrack_parent_name(&mr->res, &pd->res);

@@ -2058,6 +2058,12 @@ static int ib_uverbs_post_send(struct uverbs_attr_bundle *attrs)
 		goto out;
 	}
 
+	/* reliable unconnected work requests are posted by the provider */
+	if (qp->qp_type == IB_QPT_RU) {
+		ret = -EOPNOTSUPP;
+		goto out_put;
+	}
+
 	is_ud = qp->qp_type == IB_QPT_UD;
 	sg_ind = 0;
 	last = NULL;
@@ -2332,6 +2338,14 @@ static int ib_uverbs_post_recv(struct uverbs_attr_bundle *attrs)
 	qp = uobj_get_obj_read(qp, UVERBS_OBJECT_QP, cmd.qp_handle, attrs);
 	if (IS_ERR(qp)) {
 		ret = PTR_ERR(qp);
+		goto out;
+	}
+
+	/* reliable unconnected work requests are posted by the provider */
+	if (qp->qp_type == IB_QPT_RU) {
+		rdma_lookup_put_uobject(&qp->uobject->uevent.uobject,
+					UVERBS_LOOKUP_READ);
+		ret = -EOPNOTSUPP;
 		goto out;
 	}
 

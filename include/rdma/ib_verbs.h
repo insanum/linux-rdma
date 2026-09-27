@@ -278,6 +278,14 @@ enum ib_device_cap_flags {
 	IB_DEVICE_FLUSH_PERSISTENT = IB_UVERBS_DEVICE_FLUSH_PERSISTENT,
 	IB_DEVICE_ATOMIC_WRITE = IB_UVERBS_DEVICE_ATOMIC_WRITE,
 	IB_DEVICE_CC_DMA_BOUNCE = IB_UVERBS_DEVICE_CC_DMA_BOUNCE,
+	IB_DEVICE_RU = IB_UVERBS_DEVICE_RU,
+	IB_DEVICE_IMM64 = IB_UVERBS_DEVICE_IMM64,
+	IB_DEVICE_KEY64 = IB_UVERBS_DEVICE_KEY64,
+	IB_DEVICE_USER_RKEY = IB_UVERBS_DEVICE_USER_RKEY,
+	IB_DEVICE_MR_UNRESTRICTED = IB_UVERBS_DEVICE_MR_UNRESTRICTED,
+	IB_DEVICE_MR_JOB_RESTRICTED = IB_UVERBS_DEVICE_MR_JOB_RESTRICTED,
+	IB_DEVICE_MR_QP_RESTRICTED = IB_UVERBS_DEVICE_MR_QP_RESTRICTED,
+	IB_DEVICE_MR_QP_JOB_RESTRICTED = IB_UVERBS_DEVICE_MR_QP_JOB_RESTRICTED,
 };
 
 enum ib_kernel_cap_flags {
@@ -456,6 +464,12 @@ struct ib_device_attr {
 	u64			max_dm_size;
 	/* Max entries for sgl for optimized performance per READ */
 	u32			max_sgl_rd;
+	/* Jobs allocated at once, not the largest JobID */
+	u32			max_job_ids;
+	/* Job keys allocated at once */
+	u32			max_job_keys;
+	/* Largest address table a single job may have */
+	u32			max_addr_entries;
 };
 
 enum ib_mtu {

@@ -40,8 +40,13 @@ static int uverbs_free_mr(struct ib_uobject *uobject,
 			  enum rdma_remove_reason why,
 			  struct uverbs_attr_bundle *attrs)
 {
-	return ib_dereg_mr_user((struct ib_mr *)uobject->object,
-				&attrs->driver_udata);
+	struct ib_mr *mr = uobject->object;
+
+	/* regions derived from this one still use it */
+	if (atomic_read(&mr->usecnt))
+		return -EBUSY;
+
+	return ib_dereg_mr_user(mr, &attrs->driver_udata);
 }
 
 static int UVERBS_HANDLER(UVERBS_METHOD_ADVISE_MR)(
@@ -132,6 +137,7 @@ static int UVERBS_HANDLER(UVERBS_METHOD_DM_MR_REG)(
 	mr->pd      = pd;
 	mr->type    = IB_MR_TYPE_DM;
 	mr->dm      = dm;
+	ib_mr_init_core_refs(mr);
 	mr->uobject = uobj;
 	atomic_inc(&pd->usecnt);
 	atomic_inc(&dm->usecnt);
@@ -246,6 +252,9 @@ static int UVERBS_HANDLER(UVERBS_METHOD_REG_DMABUF_MR)(
 	mr->device = pd->device;
 	mr->pd = pd;
 	mr->type = IB_MR_TYPE_USER;
+	mr->iova = iova;
+	mr->length = length;
+	ib_mr_init_core_refs(mr);
 	mr->uobject = uobj;
 	atomic_inc(&pd->usecnt);
 
@@ -266,6 +275,113 @@ static int UVERBS_HANDLER(UVERBS_METHOD_REG_DMABUF_MR)(
 	return ret;
 }
 
+/* Attributes that an extended MR registration uses. The 64b wide keys are
+ * not in the list as they are not a property of how the MR was registered
+ * and instead a device property which could be used by an ordinary register.
+ */
+static const u16 reg_mr_ext_attrs[] = {
+	UVERBS_ATTR_REG_MR_FLAGS,
+	UVERBS_ATTR_REG_MR_JKEY_HANDLE,
+	UVERBS_ATTR_REG_MR_PARENT_MR_HANDLE,
+	UVERBS_ATTR_REG_MR_DERIVE_CNT,
+	UVERBS_ATTR_REG_MR_REQ_RKEY64,
+};
+
+static bool reg_mr_has_ext_attrs(struct uverbs_attr_bundle *attrs)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(reg_mr_ext_attrs); i++)
+		if (uverbs_attr_is_valid(attrs, reg_mr_ext_attrs[i]))
+			return true;
+
+	return false;
+}
+
+static int reg_mr_ex_attr(struct uverbs_attr_bundle *attrs, struct ib_pd *pd,
+			  struct ib_mr_ex_attr *ex)
+{
+	u64 caps = pd->device->attrs.device_cap_flags;
+	int ret;
+
+	ret = uverbs_get_flags32(&ex->flags, attrs, UVERBS_ATTR_REG_MR_FLAGS,
+				 (IB_UVERBS_REG_MR_USER_RKEY |
+				  IB_UVERBS_REG_MR_IDEMPOTENT_SAFE));
+	if (ret)
+		return ret;
+
+	if (uverbs_attr_is_valid(attrs, UVERBS_ATTR_REG_MR_JKEY_HANDLE)) {
+		struct ib_jkey *jkey = uverbs_attr_get_obj(
+			attrs, UVERBS_ATTR_REG_MR_JKEY_HANDLE);
+
+		if (IS_ERR(jkey))
+			return PTR_ERR(jkey);
+
+		/* a key acts within the PD it was made on */
+		if (jkey->pd != pd)
+			return -EINVAL;
+
+		if (!(caps & (IB_DEVICE_MR_JOB_RESTRICTED |
+			      IB_DEVICE_MR_QP_JOB_RESTRICTED)))
+			return -EOPNOTSUPP;
+
+		ex->jkey = jkey;
+	}
+
+	/* a region carved out of another, execute the range check */
+	if (uverbs_attr_is_valid(attrs, UVERBS_ATTR_REG_MR_PARENT_MR_HANDLE)) {
+		struct ib_mr *parent = uverbs_attr_get_obj(
+			attrs, UVERBS_ATTR_REG_MR_PARENT_MR_HANDLE);
+
+		if (IS_ERR(parent))
+			return PTR_ERR(parent);
+
+		if (parent->pd != pd || parent->type != IB_MR_TYPE_USER)
+			return -EINVAL;
+
+		if ((ex->iova < parent->iova) ||
+		    (ex->length > parent->length) ||
+		    ((ex->iova - parent->iova) >
+		     (parent->length - ex->length)))
+			return -EINVAL;
+
+		ex->parent_mr = parent;
+	}
+
+	if (uverbs_attr_is_valid(attrs, UVERBS_ATTR_REG_MR_DERIVE_CNT)) {
+		ret = uverbs_copy_from(&ex->derive_cnt, attrs,
+				       UVERBS_ATTR_REG_MR_DERIVE_CNT);
+		if (ret)
+			return ret;
+	}
+
+	if (ex->flags & IB_UVERBS_REG_MR_USER_RKEY) {
+		if (!(caps & IB_DEVICE_USER_RKEY))
+			return -EOPNOTSUPP;
+
+		ret = uverbs_copy_from(&ex->req_rkey64, attrs,
+				       UVERBS_ATTR_REG_MR_REQ_RKEY64);
+		if (ret)
+			return ret;
+
+		if (ex->req_rkey64 > U32_MAX && !(caps & IB_DEVICE_KEY64))
+			return -EOPNOTSUPP;
+	} else if (uverbs_attr_is_valid(attrs,
+					UVERBS_ATTR_REG_MR_REQ_RKEY64)) {
+		/* a key with no flag to say it is the caller's */
+		return -EINVAL;
+	}
+
+	/* Idempotent-safe is a property of the key so it can only be asked
+	 * for on a key the caller chose.
+	 */
+	if ((ex->flags & IB_UVERBS_REG_MR_IDEMPOTENT_SAFE) &&
+	    !(ex->flags & IB_UVERBS_REG_MR_USER_RKEY))
+		return -EINVAL;
+
+	return 0;
+}
+
 static int UVERBS_HANDLER(UVERBS_METHOD_REG_MR)(
 	struct uverbs_attr_bundle *attrs)
 {
@@ -276,10 +392,12 @@ static int UVERBS_HANDLER(UVERBS_METHOD_REG_MR)(
 	u32 valid_access_flags = IB_ACCESS_SUPPORTED;
 	u64 length, iova, fd_offset = 0, addr = 0;
 	struct ib_device *ib_dev = pd->device;
+	struct ib_mr_ex_attr ex = { .fd = -1 };
 	struct ib_dmah *dmah = NULL;
 	bool has_fd_offset = false;
 	bool has_addr = false;
 	bool has_fd = false;
+	bool has_ext;
 	u32 access_flags;
 	struct ib_mr *mr;
 	int fd;
@@ -292,6 +410,10 @@ static int UVERBS_HANDLER(UVERBS_METHOD_REG_MR)(
 	ret = uverbs_copy_from(&length, attrs, UVERBS_ATTR_REG_MR_LENGTH);
 	if (ret)
 		return ret;
+
+	has_ext = reg_mr_has_ext_attrs(attrs);
+	if (has_ext && !ib_dev->ops.reg_user_mr_ex)
+		return -EOPNOTSUPP;
 
 	if (uverbs_attr_is_valid(attrs, UVERBS_ATTR_REG_MR_ADDR)) {
 		ret = uverbs_copy_from(&addr, attrs,
@@ -318,7 +440,8 @@ static int UVERBS_HANDLER(UVERBS_METHOD_REG_MR)(
 	}
 
 	if (has_fd) {
-		if (!ib_dev->ops.reg_user_mr_dmabuf)
+		/* an extended registration hands the fd to reg_user_mr_ex */
+		if (!has_ext && !ib_dev->ops.reg_user_mr_dmabuf)
 			return -EOPNOTSUPP;
 
 		/* FD requires offset and can't come with addr */
@@ -358,7 +481,24 @@ static int UVERBS_HANDLER(UVERBS_METHOD_REG_MR)(
 	if (ret)
 		return ret;
 
-	if (has_fd)
+	if (has_ext) {
+		ex.addr = addr;
+		ex.length = length;
+		ex.iova = iova;
+		ex.access_flags = access_flags;
+		ex.dmah = dmah;
+		if (has_fd) {
+			ex.fd = fd;
+			ex.fd_offset = fd_offset;
+		}
+
+		ret = reg_mr_ex_attr(attrs, pd, &ex);
+		if (ret)
+			return ret;
+
+		mr = pd->device->ops.reg_user_mr_ex(pd, &ex,
+						    &attrs->driver_udata);
+	} else if (has_fd)
 		mr = pd->device->ops.reg_user_mr_dmabuf(pd, fd_offset, length,
 							iova, fd, access_flags,
 							dmah, attrs);
@@ -373,12 +513,26 @@ static int UVERBS_HANDLER(UVERBS_METHOD_REG_MR)(
 	mr->device = pd->device;
 	mr->pd = pd;
 	mr->type = IB_MR_TYPE_USER;
+	mr->iova = iova;
+	mr->length = length;
+	ib_mr_init_core_refs(mr);
 	mr->uobject = uobj;
 	atomic_inc(&pd->usecnt);
 	if (dmah) {
 		mr->dmah = dmah;
 		atomic_inc(&dmah->usecnt);
 	}
+
+	/* hold a reference to the job key, deregistration will drop it */
+	mr->jkey = ex.jkey;
+	if (ex.jkey)
+		atomic_inc(&ex.jkey->usecnt);
+
+	/* and to the region this one was derived from */
+	mr->parent = ex.parent_mr;
+	if (ex.parent_mr)
+		atomic_inc(&ex.parent_mr->usecnt);
+
 	rdma_restrack_new(&mr->res, RDMA_RESTRACK_MR);
 	rdma_restrack_set_name(&mr->res, NULL);
 	rdma_restrack_add(&mr->res);
@@ -529,6 +683,23 @@ DECLARE_UVERBS_NAMED_METHOD(
 	UVERBS_ATTR_PTR_OUT(UVERBS_ATTR_REG_MR_RESP_RKEY,
 			    UVERBS_ATTR_TYPE(u32),
 			    UA_MANDATORY),
+	UVERBS_ATTR_FLAGS_IN(UVERBS_ATTR_REG_MR_FLAGS,
+			     enum ib_uverbs_reg_mr_flags,
+			     UA_OPTIONAL),
+	UVERBS_ATTR_IDR(UVERBS_ATTR_REG_MR_JKEY_HANDLE,
+			UVERBS_OBJECT_JKEY,
+			UVERBS_ACCESS_READ,
+			UA_OPTIONAL),
+	UVERBS_ATTR_IDR(UVERBS_ATTR_REG_MR_PARENT_MR_HANDLE,
+			UVERBS_OBJECT_MR,
+			UVERBS_ACCESS_READ,
+			UA_OPTIONAL),
+	UVERBS_ATTR_PTR_IN(UVERBS_ATTR_REG_MR_DERIVE_CNT,
+			   UVERBS_ATTR_TYPE(u32),
+			   UA_OPTIONAL),
+	UVERBS_ATTR_PTR_IN(UVERBS_ATTR_REG_MR_REQ_RKEY64,
+			   UVERBS_ATTR_TYPE(u64),
+			   UA_OPTIONAL),
 	UVERBS_ATTR_UHW());
 
 DECLARE_UVERBS_NAMED_METHOD_DESTROY(

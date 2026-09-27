@@ -731,6 +731,7 @@ static int ib_uverbs_reg_mr(struct uverbs_attr_bundle *attrs)
 	mr->type    = IB_MR_TYPE_USER;
 	mr->dm	    = NULL;
 	mr->sig_attrs = NULL;
+	ib_mr_init_core_refs(mr);
 	mr->uobject = uobj;
 	atomic_inc(&pd->usecnt);
 	mr->iova = cmd.hca_va;
@@ -790,7 +791,10 @@ static int ib_uverbs_rereg_mr(struct uverbs_attr_bundle *attrs)
 
 	mr = uobj->object;
 
-	if (mr->dm) {
+	/* A region bound to a job or to another region is re-created rather
+	 * than re-registered, so those bindings can't be lost or bypassed.
+	 */
+	if (mr->dm || mr->jkey || mr->parent || atomic_read(&mr->usecnt)) {
 		ret = -EINVAL;
 		goto put_uobjs;
 	}
@@ -838,6 +842,7 @@ static int ib_uverbs_rereg_mr(struct uverbs_attr_bundle *attrs)
 		new_mr->device = new_pd->device;
 		new_mr->pd = new_pd;
 		new_mr->type = IB_MR_TYPE_USER;
+		ib_mr_init_core_refs(new_mr);
 		new_mr->uobject = uobj;
 		atomic_inc(&new_pd->usecnt);
 		new_uobj->object = new_mr;

@@ -42,7 +42,7 @@ static int uverbs_free_mr(struct ib_uobject *uobject,
 {
 	struct ib_mr *mr = uobject->object;
 
-	/* regions derived from this one still use it */
+	/* regions derived from this one, or the QP it is attached to, use it */
 	if (atomic_read(&mr->usecnt))
 		return -EBUSY;
 

@@ -1351,6 +1351,7 @@ static struct ib_qp *create_qp(struct ib_device *dev, struct ib_pd *pd,
 
 	spin_lock_init(&qp->mr_lock);
 	xa_init(&qp->comp_cntrs);
+	xa_init_flags(&qp->attached_mrs, XA_FLAGS_ALLOC);
 	INIT_LIST_HEAD(&qp->rdma_mrs);
 	INIT_LIST_HEAD(&qp->sig_mrs);
 	init_completion(&qp->srq_completion);
@@ -1385,6 +1386,7 @@ err_security:
 err_create:
 	rdma_restrack_put(&qp->res);
 	xa_destroy(&qp->comp_cntrs);
+	xa_destroy(&qp->attached_mrs);
 	kfree(qp);
 	return ERR_PTR(ret);
 
@@ -2212,6 +2214,7 @@ int ib_destroy_qp_user(struct ib_qp *qp, struct ib_udata *udata)
 	struct ib_qp_security *sec;
 	struct ib_comp_cntr *cc;
 	unsigned long index;
+	struct ib_mr *mr;
 	int ret;
 
 	WARN_ON_ONCE(qp->mrs_used > 0);
@@ -2248,6 +2251,13 @@ int ib_destroy_qp_user(struct ib_qp *qp, struct ib_udata *udata)
 	xa_for_each(&qp->comp_cntrs, index, cc)
 		atomic_dec(&cc->usecnt);
 	xa_destroy(&qp->comp_cntrs);
+
+	/* the driver ended the bindings with the QP, release the regions */
+	xa_for_each(&qp->attached_mrs, index, mr) {
+		WRITE_ONCE(mr->attached_qp, NULL);
+		atomic_dec(&mr->usecnt);
+	}
+	xa_destroy(&qp->attached_mrs);
 
 	ib_qp_usecnt_dec(qp);
 	if (sec)

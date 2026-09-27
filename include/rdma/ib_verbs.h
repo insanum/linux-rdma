@@ -2091,6 +2091,9 @@ struct ib_mr {
 		struct list_head	qp_entry;	/* FR */
 	};
 
+	/* region names for a transport/device that supports 64b keys */
+	u64		   lkey64;
+	u64		   rkey64;
 	/* the job this region is restricted to, NULL if it is unrestricted */
 	struct ib_jkey	  *jkey;
 

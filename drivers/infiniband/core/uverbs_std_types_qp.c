@@ -550,12 +550,74 @@ DECLARE_UVERBS_NAMED_METHOD(
 			     enum ib_uverbs_qp_attach_comp_cntr_op,
 			     UA_MANDATORY));
 
+/* bind a region to the QP that will use it */
+static int UVERBS_HANDLER(UVERBS_METHOD_QP_ATTACH_MR)(
+	struct uverbs_attr_bundle *attrs)
+{
+	struct ib_qp *qp =
+		uverbs_attr_get_obj(attrs, UVERBS_ATTR_QP_ATTACH_MR_QP_HANDLE);
+	struct ib_mr *mr =
+		uverbs_attr_get_obj(attrs, UVERBS_ATTR_QP_ATTACH_MR_MR_HANDLE);
+
+	if (!qp->device->ops.qp_attach_mr)
+		return -EOPNOTSUPP;
+
+	if (qp->real_qp != qp)
+		return -EINVAL;
+
+	if (mr->pd != qp->pd)
+		return -EINVAL;
+
+	return qp->device->ops.qp_attach_mr(qp, mr);
+}
+
+static int UVERBS_HANDLER(UVERBS_METHOD_QP_DETACH_MR)(
+	struct uverbs_attr_bundle *attrs)
+{
+	struct ib_qp *qp =
+		uverbs_attr_get_obj(attrs, UVERBS_ATTR_QP_DETACH_MR_QP_HANDLE);
+	struct ib_mr *mr =
+		uverbs_attr_get_obj(attrs, UVERBS_ATTR_QP_DETACH_MR_MR_HANDLE);
+
+	if (!qp->device->ops.qp_detach_mr)
+		return -EOPNOTSUPP;
+
+	if (qp->real_qp != qp)
+		return -EINVAL;
+
+	return qp->device->ops.qp_detach_mr(qp, mr);
+}
+
+DECLARE_UVERBS_NAMED_METHOD(
+	UVERBS_METHOD_QP_ATTACH_MR,
+	UVERBS_ATTR_IDR(UVERBS_ATTR_QP_ATTACH_MR_QP_HANDLE,
+			UVERBS_OBJECT_QP,
+			UVERBS_ACCESS_READ,
+			UA_MANDATORY),
+	UVERBS_ATTR_IDR(UVERBS_ATTR_QP_ATTACH_MR_MR_HANDLE,
+			UVERBS_OBJECT_MR,
+			UVERBS_ACCESS_READ,
+			UA_MANDATORY));
+
+DECLARE_UVERBS_NAMED_METHOD(
+	UVERBS_METHOD_QP_DETACH_MR,
+	UVERBS_ATTR_IDR(UVERBS_ATTR_QP_DETACH_MR_QP_HANDLE,
+			UVERBS_OBJECT_QP,
+			UVERBS_ACCESS_READ,
+			UA_MANDATORY),
+	UVERBS_ATTR_IDR(UVERBS_ATTR_QP_DETACH_MR_MR_HANDLE,
+			UVERBS_OBJECT_MR,
+			UVERBS_ACCESS_READ,
+			UA_MANDATORY));
+
 DECLARE_UVERBS_NAMED_OBJECT(
 	UVERBS_OBJECT_QP,
 	UVERBS_TYPE_ALLOC_IDR_SZ(sizeof(struct ib_uqp_object), uverbs_free_qp),
 	&UVERBS_METHOD(UVERBS_METHOD_QP_CREATE),
 	&UVERBS_METHOD(UVERBS_METHOD_QP_DESTROY),
-	&UVERBS_METHOD(UVERBS_METHOD_QP_ATTACH_COMP_CNTR));
+	&UVERBS_METHOD(UVERBS_METHOD_QP_ATTACH_COMP_CNTR),
+	&UVERBS_METHOD(UVERBS_METHOD_QP_ATTACH_MR),
+	&UVERBS_METHOD(UVERBS_METHOD_QP_DETACH_MR));
 
 const struct uapi_definition uverbs_def_obj_qp[] = {
 	UAPI_DEF_CHAIN_OBJ_TREE_NAMED(UVERBS_OBJECT_QP,

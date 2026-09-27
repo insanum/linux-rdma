@@ -2846,6 +2846,9 @@ struct ib_device_ops {
 					struct ib_mr_ex_attr *attr,
 					struct ib_udata *udata);
 	int (*dereg_mr)(struct ib_mr *mr, struct ib_udata *udata);
+	/* attach/detach a region so it is bound to single QP (restricted) */
+	int (*qp_attach_mr)(struct ib_qp *qp, struct ib_mr *mr);
+	int (*qp_detach_mr)(struct ib_qp *qp, struct ib_mr *mr);
 	int (*query_qp_semantics)(struct ib_device *device,
 				  enum ib_qp_type qp_type,
 				  struct ib_qp_semantics *sem);

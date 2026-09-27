@@ -199,6 +199,18 @@ enum uverbs_methods_qp {
 	UVERBS_METHOD_QP_CREATE,
 	UVERBS_METHOD_QP_DESTROY,
 	UVERBS_METHOD_QP_ATTACH_COMP_CNTR,
+	UVERBS_METHOD_QP_ATTACH_MR,
+	UVERBS_METHOD_QP_DETACH_MR,
+};
+
+enum uverbs_attrs_qp_attach_mr_cmd_attr_ids {
+	UVERBS_ATTR_QP_ATTACH_MR_QP_HANDLE,
+	UVERBS_ATTR_QP_ATTACH_MR_MR_HANDLE,
+};
+
+enum uverbs_attrs_qp_detach_mr_cmd_attr_ids {
+	UVERBS_ATTR_QP_DETACH_MR_QP_HANDLE,
+	UVERBS_ATTR_QP_DETACH_MR_MR_HANDLE,
 };
 
 enum uverbs_attrs_create_srq_cmd_attr_ids {

@@ -184,6 +184,76 @@ DECLARE_UVERBS_NAMED_OBJECT(UVERBS_OBJECT_MW,
 			    UVERBS_TYPE_ALLOC_IDR(uverbs_free_mw),
 			    &UVERBS_METHOD(UVERBS_METHOD_MW_DESTROY));
 
+/* Creating an address handle is still a write() command whose request
+ * struct cannot grow. A transport (reliable unconnected) that resolves a
+ * peer using both transport and network addresses requires additional
+ * fields in the address handle. Here the address handle create command is
+ * made available as an ioctl method, where additional attributes can be
+ * carried.
+ */
+static int UVERBS_HANDLER(UVERBS_METHOD_AH_EX_CREATE)(
+	struct uverbs_attr_bundle *attrs)
+{
+	struct ib_uobject *uobj = uverbs_attr_get_uobject(
+		attrs, UVERBS_ATTR_CREATE_AH_EX_HANDLE);
+	struct ib_pd *pd =
+		uverbs_attr_get_obj(attrs, UVERBS_ATTR_CREATE_AH_EX_PD_HANDLE);
+	struct ib_device *ib_dev = attrs->context->device;
+	struct ib_uverbs_ah_attr_ex uah;
+	struct rdma_ah_init_attr init_attr = {};
+	struct rdma_ah_attr_ex attr = {};
+	struct ib_ah *ah;
+	int ret;
+
+	if (IS_ERR(pd))
+		return PTR_ERR(pd);
+
+	/* Only a reliable unconnected device has a use for the extended
+	 * attributes.
+	 */
+	if (!(ib_dev->attrs.device_cap_flags & IB_DEVICE_RU))
+		return -EOPNOTSUPP;
+
+	ret = uverbs_copy_from(&uah, attrs,
+			       UVERBS_ATTR_CREATE_AH_EX_AH_ATTR_EX);
+	if (ret)
+		return ret;
+
+	ret = copy_ah_attr_from_uverbs_ah(ib_dev, &attr.ah_attr, &uah.ah_attr);
+	if (ret)
+		return ret;
+
+	attr.remote_qpn = uah.remote_qpn;
+
+	init_attr.ah_attr = &attr.ah_attr;
+	init_attr.ah_attr_ex = &attr;
+
+	ah = rdma_create_user_ah(pd, &init_attr, &attrs->driver_udata);
+	if (IS_ERR(ah))
+		return PTR_ERR(ah);
+
+	ah->uobject = uobj;
+	uobj->object = ah;
+
+	return 0;
+}
+
+DECLARE_UVERBS_NAMED_METHOD(
+	UVERBS_METHOD_AH_EX_CREATE,
+	UVERBS_ATTR_IDR(UVERBS_ATTR_CREATE_AH_EX_HANDLE,
+			UVERBS_OBJECT_AH,
+			UVERBS_ACCESS_NEW,
+			UA_MANDATORY),
+	UVERBS_ATTR_IDR(UVERBS_ATTR_CREATE_AH_EX_PD_HANDLE,
+			UVERBS_OBJECT_PD,
+			UVERBS_ACCESS_READ,
+			UA_MANDATORY),
+	UVERBS_ATTR_PTR_IN(UVERBS_ATTR_CREATE_AH_EX_AH_ATTR_EX,
+			   UVERBS_ATTR_STRUCT(struct ib_uverbs_ah_attr_ex,
+					      remote_qpn),
+			   UA_MANDATORY),
+	UVERBS_ATTR_UHW());
+
 DECLARE_UVERBS_NAMED_METHOD_DESTROY(
 	UVERBS_METHOD_AH_DESTROY,
 	UVERBS_ATTR_IDR(UVERBS_ATTR_DESTROY_AH_HANDLE,
@@ -193,7 +263,8 @@ DECLARE_UVERBS_NAMED_METHOD_DESTROY(
 
 DECLARE_UVERBS_NAMED_OBJECT(UVERBS_OBJECT_AH,
 			    UVERBS_TYPE_ALLOC_IDR(uverbs_free_ah),
-			    &UVERBS_METHOD(UVERBS_METHOD_AH_DESTROY));
+			    &UVERBS_METHOD(UVERBS_METHOD_AH_DESTROY),
+			    &UVERBS_METHOD(UVERBS_METHOD_AH_EX_CREATE));
 
 DECLARE_UVERBS_NAMED_METHOD_DESTROY(
 	UVERBS_METHOD_FLOW_DESTROY,

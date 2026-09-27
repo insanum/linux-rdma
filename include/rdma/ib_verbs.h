@@ -2498,6 +2498,18 @@ struct ib_counters {
 	atomic_t	usecnt;
 };
 
+/* what a queue pair of a given type guarantees (query_qp_semantics) */
+struct ib_qp_semantics {
+	u32	comp_mask;		/* enum ib_uverbs_qp_semantics_mask */
+	u32	msg_order;		/* enum ib_uverbs_qp_msg_order */
+	u32	max_rdma_raw_size;
+	u32	max_rdma_war_size;
+	u32	max_rdma_waw_size;
+	u32	max_pdu;
+	u32	usage_flags;		/* enum ib_uverbs_qp_usage_flags */
+	u8	imm_data_size;		/* bits */
+};
+
 struct ib_counters_read_attr {
 	u64	*counters_buff;
 	u32	ncounters;
@@ -2753,6 +2765,9 @@ struct ib_device_ops {
 				       int mr_access_flags, struct ib_pd *pd,
 				       struct ib_udata *udata);
 	int (*dereg_mr)(struct ib_mr *mr, struct ib_udata *udata);
+	int (*query_qp_semantics)(struct ib_device *device,
+				  enum ib_qp_type qp_type,
+				  struct ib_qp_semantics *sem);
 	struct ib_mr *(*alloc_mr)(struct ib_pd *pd, enum ib_mr_type mr_type,
 				  u32 max_num_sg);
 	struct ib_mr *(*alloc_mr_integrity)(struct ib_pd *pd,

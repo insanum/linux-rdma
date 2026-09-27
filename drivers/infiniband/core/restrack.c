@@ -106,6 +106,10 @@ static struct ib_device *res_to_dev(struct rdma_restrack_entry *res)
 		return container_of(res, struct ib_dmah, res)->device;
 	case RDMA_RESTRACK_COMP_CNTR:
 		return container_of(res, struct ib_comp_cntr, res)->device;
+	case RDMA_RESTRACK_JOB:
+		return container_of(res, struct ib_job, res)->device;
+	case RDMA_RESTRACK_JKEY:
+		return container_of(res, struct ib_jkey, res)->device;
 	default:
 		WARN_ONCE(true, "Wrong resource tracking type %u\n", res->type);
 		return NULL;

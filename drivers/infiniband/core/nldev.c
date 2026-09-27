@@ -454,6 +454,8 @@ static int fill_res_info(struct sk_buff *msg, struct ib_device *device,
 		[RDMA_RESTRACK_CTX] = "ctx",
 		[RDMA_RESTRACK_SRQ] = "srq",
 		[RDMA_RESTRACK_COMP_CNTR] = "comp_cntr",
+		[RDMA_RESTRACK_JOB] = "job",
+		[RDMA_RESTRACK_JKEY] = "jkey",
 	};
 
 	struct ib_comp_cntr_caps comp_cntr_caps = {};
@@ -493,6 +495,12 @@ static int fill_res_info(struct sk_buff *msg, struct ib_device *device,
 			break;
 		case RDMA_RESTRACK_COMP_CNTR:
 			max = comp_cntr_caps.max_counters;
+			break;
+		case RDMA_RESTRACK_JOB:
+			max = device->attrs.max_job_ids;
+			break;
+		case RDMA_RESTRACK_JKEY:
+			max = device->attrs.max_job_keys;
 			break;
 		default:
 			max = 0;

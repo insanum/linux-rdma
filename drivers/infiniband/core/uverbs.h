@@ -174,6 +174,12 @@ struct ib_uxrcd_object {
 	atomic_t		refcnt;
 };
 
+struct ib_ujob_object {
+	struct ib_uobject	uobject;
+	/* job keys created through this handle */
+	atomic_t		refcnt;
+};
+
 struct ib_usrq_object {
 	struct ib_uevent_object	uevent;
 	struct ib_uxrcd_object *uxrcd;

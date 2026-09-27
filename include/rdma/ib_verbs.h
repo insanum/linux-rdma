@@ -2498,6 +2498,40 @@ struct ib_counters {
 	atomic_t	usecnt;
 };
 
+struct ib_job_attr {
+	u32			job_id;
+	u32			max_addr_entries;
+	u32			flags;
+	u8			port_num;
+	u8			sgid_index;
+};
+
+/* A job is a receive-side demultiplexing domain of an unconnected transport.
+ * A JobID names it on the wire, memory regions bind to it, and job keys
+ * authorize queue pairs within it.
+ */
+struct ib_job {
+	struct ib_device	*device;
+	/* exports, job keys, regions, and queue pairs referencing this job */
+	struct kref		ref;
+	u32			job_id;
+	struct rdma_restrack_entry res;
+};
+
+/* A job key ties a job to a PD and authorizes a queue pair to act within a
+ * job. It holds a reference to its job and PD.
+ */
+struct ib_jkey {
+	struct ib_device	*device;
+	struct ib_uobject	*uobject;
+	struct ib_job		*job;
+	struct ib_uobject	*job_uobject;
+	struct ib_pd		*pd;
+	u32			jkey;
+	atomic_t		usecnt;
+	struct rdma_restrack_entry res;
+};
+
 /* what a queue pair of a given type guarantees (query_qp_semantics) */
 struct ib_qp_semantics {
 	u32	comp_mask;		/* enum ib_uverbs_qp_semantics_mask */
@@ -2832,6 +2866,19 @@ struct ib_device_ops {
 	struct ib_mr *(*reg_dm_mr)(struct ib_pd *pd, struct ib_dm *dm,
 				   struct ib_dm_mr_attr *attr,
 				   struct uverbs_attr_bundle *attrs);
+	int (*alloc_job)(struct ib_job *job, struct ib_job_attr *attr,
+			 struct uverbs_attr_bundle *attrs);
+	int (*dealloc_job)(struct ib_job *job);
+	int (*query_job)(struct ib_job *job, struct ib_job_attr *attr);
+	int (*job_addr_insert)(struct ib_job *job, u32 index,
+			       struct rdma_ah_attr_ex *ah_attr, u32 flags);
+	int (*job_addr_remove)(struct ib_job *job, u32 index, u32 flags);
+	int (*job_addr_query)(struct ib_job *job, u32 index,
+			      struct rdma_ah_attr_ex *ah_attr, u32 flags);
+	int (*create_jkey)(struct ib_jkey *jkey, u32 flags,
+			   struct uverbs_attr_bundle *attrs);
+	int (*destroy_jkey)(struct ib_jkey *jkey,
+			    struct uverbs_attr_bundle *attrs);
 	int (*create_counters)(struct ib_counters *counters,
 			       struct uverbs_attr_bundle *attrs);
 	int (*destroy_counters)(struct ib_counters *counters);
@@ -2985,6 +3032,8 @@ struct ib_device_ops {
 
 	DECLARE_RDMA_OBJ_SIZE(ib_ah);
 	DECLARE_RDMA_OBJ_SIZE(ib_counters);
+	DECLARE_RDMA_OBJ_SIZE(ib_job);
+	DECLARE_RDMA_OBJ_SIZE(ib_jkey);
 	DECLARE_RDMA_OBJ_SIZE(ib_cq);
 	DECLARE_RDMA_OBJ_SIZE(ib_comp_cntr);
 	DECLARE_RDMA_OBJ_SIZE(ib_dmah);

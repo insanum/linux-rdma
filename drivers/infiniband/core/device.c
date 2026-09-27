@@ -2915,6 +2915,14 @@ void ib_set_device_ops(struct ib_device *dev, const struct ib_device_ops *ops)
 	SET_DEVICE_OP(dev_ops, counter_unbind_qp);
 	SET_DEVICE_OP(dev_ops, counter_update_stats);
 	SET_DEVICE_OP(dev_ops, create_ah);
+	SET_DEVICE_OP(dev_ops, alloc_job);
+	SET_DEVICE_OP(dev_ops, dealloc_job);
+	SET_DEVICE_OP(dev_ops, query_job);
+	SET_DEVICE_OP(dev_ops, job_addr_insert);
+	SET_DEVICE_OP(dev_ops, job_addr_remove);
+	SET_DEVICE_OP(dev_ops, job_addr_query);
+	SET_DEVICE_OP(dev_ops, create_jkey);
+	SET_DEVICE_OP(dev_ops, destroy_jkey);
 	SET_DEVICE_OP(dev_ops, create_counters);
 	SET_DEVICE_OP(dev_ops, create_cq);
 	SET_DEVICE_OP(dev_ops, create_comp_cntr);
@@ -3031,6 +3039,8 @@ void ib_set_device_ops(struct ib_device *dev, const struct ib_device_ops *ops)
 
 	SET_OBJ_SIZE(dev_ops, ib_ah);
 	SET_OBJ_SIZE(dev_ops, ib_counters);
+	SET_OBJ_SIZE(dev_ops, ib_job);
+	SET_OBJ_SIZE(dev_ops, ib_jkey);
 	SET_OBJ_SIZE(dev_ops, ib_cq);
 	SET_OBJ_SIZE(dev_ops, ib_comp_cntr);
 	SET_OBJ_SIZE(dev_ops, ib_dmah);

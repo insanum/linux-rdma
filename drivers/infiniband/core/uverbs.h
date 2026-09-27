@@ -407,5 +407,18 @@ static inline void ib_uverbs_comp_dev(struct ib_uverbs_device *dev)
 	complete(&dev->comp);
 }
 
+/* the semantics fields, ordering bits and usage flags uverbs knows of */
+#define QP_SEMANTICS_MASK_ALL	((IB_UVERBS_QP_SEMANTICS_MASK_USAGE << 1) - 1)
+#define QP_ORDER_ALL		((IB_UVERBS_QP_ORDER_WAW << 1) - 1)
+#define QP_USAGE_ALL		IB_UVERBS_QP_USAGE_IMM_DATA_RQ
+
+/* the ordering bits each data-ordering size limits */
+#define QP_ORDER_RAW_SIZED	(IB_UVERBS_QP_ORDER_RDMA_RAW |	\
+				 IB_UVERBS_QP_ORDER_RAW)
+#define QP_ORDER_WAR_SIZED	(IB_UVERBS_QP_ORDER_RDMA_WAR |	\
+				 IB_UVERBS_QP_ORDER_WAR)
+#define QP_ORDER_WAW_SIZED	(IB_UVERBS_QP_ORDER_RDMA_WAW |	\
+				 IB_UVERBS_QP_ORDER_WAW)
+
 
 #endif /* UVERBS_H */

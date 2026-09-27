@@ -591,6 +591,93 @@ DECLARE_UVERBS_NAMED_METHOD(
 			    UVERBS_ATTR_TYPE(u32),
 			    UA_OPTIONAL));
 
+/* What a QP type guarantees on this device. Which operations it orders
+ * against, how large a packet it puts on the wire, how wide an immediate it
+ * carries.
+ */
+static int UVERBS_HANDLER(UVERBS_METHOD_QUERY_QP_SEMANTICS)(
+	struct uverbs_attr_bundle *attrs)
+{
+	struct ib_uverbs_qp_semantics resp = {};
+	struct ib_qp_semantics sem = {};
+	struct ib_ucontext *ucontext;
+	struct ib_device *ib_dev;
+	enum ib_qp_type qp_type;
+	int ret;
+
+	ucontext = ib_uverbs_get_ucontext(attrs);
+	if (IS_ERR(ucontext))
+		return PTR_ERR(ucontext);
+	ib_dev = ucontext->device;
+
+	if (!ib_dev->ops.query_qp_semantics)
+		return -EOPNOTSUPP;
+
+	ret = uverbs_get_const(&qp_type, attrs,
+			       UVERBS_ATTR_QUERY_QP_SEMANTICS_QP_TYPE);
+	if (ret)
+		return ret;
+
+	/* only the types userspace can create, less the driver type, whose
+	 * subtypes one answer can't describe
+	 */
+	switch (qp_type) {
+	case IB_UVERBS_QPT_RC:
+	case IB_UVERBS_QPT_UC:
+	case IB_UVERBS_QPT_UD:
+	case IB_UVERBS_QPT_RAW_PACKET:
+	case IB_UVERBS_QPT_XRC_INI:
+	case IB_UVERBS_QPT_XRC_TGT:
+	case IB_UVERBS_QPT_RU:
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	ret = ib_dev->ops.query_qp_semantics(ib_dev, qp_type, &sem);
+	if (ret)
+		return ret;
+
+	/* only the fields, bits and flags uverbs knows of reach userspace */
+	resp.comp_mask = sem.comp_mask & QP_SEMANTICS_MASK_ALL;
+	if (resp.comp_mask & IB_UVERBS_QP_SEMANTICS_MASK_MSG_ORDER)
+		resp.msg_order = sem.msg_order & QP_ORDER_ALL;
+	if (resp.comp_mask & IB_UVERBS_QP_SEMANTICS_MASK_RAW)
+		resp.max_rdma_raw_size = sem.max_rdma_raw_size;
+	if (resp.comp_mask & IB_UVERBS_QP_SEMANTICS_MASK_WAR)
+		resp.max_rdma_war_size = sem.max_rdma_war_size;
+	if (resp.comp_mask & IB_UVERBS_QP_SEMANTICS_MASK_WAW)
+		resp.max_rdma_waw_size = sem.max_rdma_waw_size;
+	if (resp.comp_mask & IB_UVERBS_QP_SEMANTICS_MASK_PDU)
+		resp.max_pdu = sem.max_pdu;
+	if (resp.comp_mask & IB_UVERBS_QP_SEMANTICS_MASK_USAGE)
+		resp.usage_flags = sem.usage_flags & QP_USAGE_ALL;
+	if (resp.comp_mask & IB_UVERBS_QP_SEMANTICS_MASK_IMM)
+		resp.imm_data_size = sem.imm_data_size;
+
+	/* a pair whose data-ordering size is 0 is not ordered */
+	if (!resp.max_rdma_raw_size)
+		resp.msg_order &= ~QP_ORDER_RAW_SIZED;
+	if (!resp.max_rdma_war_size)
+		resp.msg_order &= ~QP_ORDER_WAR_SIZED;
+	if (!resp.max_rdma_waw_size)
+		resp.msg_order &= ~QP_ORDER_WAW_SIZED;
+
+	return uverbs_copy_to_struct_or_zero(
+		attrs, UVERBS_ATTR_QUERY_QP_SEMANTICS_RESP, &resp,
+		sizeof(resp));
+}
+
+DECLARE_UVERBS_NAMED_METHOD(
+	UVERBS_METHOD_QUERY_QP_SEMANTICS,
+	UVERBS_ATTR_CONST_IN(UVERBS_ATTR_QUERY_QP_SEMANTICS_QP_TYPE,
+			     enum ib_uverbs_qp_type,
+			     UA_MANDATORY),
+	UVERBS_ATTR_PTR_OUT(UVERBS_ATTR_QUERY_QP_SEMANTICS_RESP,
+			    UVERBS_ATTR_STRUCT(struct ib_uverbs_qp_semantics,
+					       imm_data_size),
+			    UA_MANDATORY));
+
 DECLARE_UVERBS_GLOBAL_METHODS(UVERBS_OBJECT_DEVICE,
 			      &UVERBS_METHOD(UVERBS_METHOD_GET_CONTEXT),
 			      &UVERBS_METHOD(UVERBS_METHOD_INVOKE_WRITE),
@@ -600,7 +687,8 @@ DECLARE_UVERBS_GLOBAL_METHODS(UVERBS_OBJECT_DEVICE,
 			      &UVERBS_METHOD(UVERBS_METHOD_QUERY_CONTEXT),
 			      &UVERBS_METHOD(UVERBS_METHOD_QUERY_GID_TABLE),
 			      &UVERBS_METHOD(UVERBS_METHOD_QUERY_GID_ENTRY),
-			      &UVERBS_METHOD(UVERBS_METHOD_QUERY_COMP_CNTR_CAPS));
+			      &UVERBS_METHOD(UVERBS_METHOD_QUERY_COMP_CNTR_CAPS),
+			      &UVERBS_METHOD(UVERBS_METHOD_QUERY_QP_SEMANTICS));
 
 const struct uapi_definition uverbs_def_obj_device[] = {
 	UAPI_DEF_CHAIN_OBJ_TREE_NAMED(UVERBS_OBJECT_DEVICE),

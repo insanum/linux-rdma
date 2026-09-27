@@ -325,6 +325,13 @@ int ib_uverbs_copy_qp_attr(struct uverbs_attr_bundle *attrs,
 			   const struct ib_uverbs_ex_modify_qp *src,
 			   u32 mask);
 
+/* what a reliable unconnected QP is created ready to send with, and all a
+ * later modify may change
+ */
+#define QP_ATTR_RU_MASK		(IB_QP_STATE | IB_QP_PKEY_INDEX |	\
+				 IB_QP_PORT | IB_QP_ACCESS_FLAGS |	\
+				 IB_QP_PATH_MTU)
+
 int ib_uverbs_kern_spec_to_ib_spec_filter(enum ib_flow_spec_type type,
 					  const void *kern_spec_mask,
 					  const void *kern_spec_val,

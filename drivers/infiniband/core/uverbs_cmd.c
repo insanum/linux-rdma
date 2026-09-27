@@ -1913,6 +1913,12 @@ static int modify_qp(struct uverbs_attr_bundle *attrs,
 		goto out;
 	}
 
+	if (qp->qp_type == IB_QPT_RU &&
+	    (cmd->base.attr_mask & ~QP_ATTR_RU_MASK)) {
+		ret = -EINVAL;
+		goto release_qp;
+	}
+
 	if ((cmd->base.attr_mask & IB_QP_AV)) {
 		if (cmd->base.attr_mask & IB_QP_STATE &&
 		    cmd->base.qp_state == IB_QPS_RTR) {

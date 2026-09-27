@@ -1973,10 +1973,13 @@ static int _ib_modify_qp(struct ib_qp *qp, struct ib_qp_attr *attr,
 
 	/*
 	 * Bind this qp to a counter automatically based on the rdma counter
-	 * rules. This only set in RST2INIT with port specified
+	 * rules. This only set in RST2INIT with port specified, or in the
+	 * RST2RTS an RU QP is created with
 	 */
 	if (!qp->counter && (attr_mask & IB_QP_PORT) &&
-	    ((attr_mask & IB_QP_STATE) && attr->qp_state == IB_QPS_INIT))
+	    (attr_mask & IB_QP_STATE) &&
+	    (attr->qp_state == IB_QPS_INIT ||
+	     (qp->qp_type == IB_QPT_RU && attr->qp_state == IB_QPS_RTS)))
 		rdma_counter_bind_qp_auto(qp, attr->port_num);
 
 	ret = ib_security_modify_qp(qp, attr, attr_mask, udata);

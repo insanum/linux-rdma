@@ -79,6 +79,53 @@ static void set_caps(struct ib_qp_init_attr *attr,
 	}
 }
 
+/* Process the optional creation attributes. A job to act within, a source
+ * identity, a set of ordering guarantees to ask for.
+ */
+static int create_qp_opt_attrs(struct uverbs_attr_bundle *attrs,
+			       struct ib_qp_init_attr *attr,
+			       struct ib_qp_semantics *sem)
+{
+	struct ib_uverbs_qp_semantics usem = {};
+	int ret;
+
+	if (uverbs_attr_is_valid(attrs, UVERBS_ATTR_CREATE_QP_SRC_ID)) {
+		ret = uverbs_copy_from(&attr->src_id, attrs,
+				       UVERBS_ATTR_CREATE_QP_SRC_ID);
+		if (ret)
+			return ret;
+	}
+
+	if (uverbs_attr_is_valid(attrs, UVERBS_ATTR_CREATE_QP_JOB_KEY)) {
+		struct ib_jkey *jkey = uverbs_attr_get_obj(
+			attrs, UVERBS_ATTR_CREATE_QP_JOB_KEY);
+
+		if (IS_ERR(jkey))
+			return PTR_ERR(jkey);
+
+		attr->jkey = jkey;
+	}
+
+	if (uverbs_attr_is_valid(attrs, UVERBS_ATTR_CREATE_QP_SEMANTICS)) {
+		ret = uverbs_copy_from_or_zero(&usem, attrs,
+					UVERBS_ATTR_CREATE_QP_SEMANTICS);
+		if (ret)
+			return ret;
+
+		sem->comp_mask = usem.comp_mask;
+		sem->msg_order = usem.msg_order;
+		sem->max_rdma_raw_size = usem.max_rdma_raw_size;
+		sem->max_rdma_war_size = usem.max_rdma_war_size;
+		sem->max_rdma_waw_size = usem.max_rdma_waw_size;
+		sem->max_pdu = usem.max_pdu;
+		sem->usage_flags = usem.usage_flags;
+		sem->imm_data_size = usem.imm_data_size;
+		attr->qp_semantics = sem;
+	}
+
+	return 0;
+}
+
 /* The attributes the QP would be modified with via modify_qp calls. Used for
  * implementations that support having QPs be in RTS immediately after QP
  * creation. These attributes arrive in the same format the modify command
@@ -123,6 +170,7 @@ static int UVERBS_HANDLER(UVERBS_METHOD_QP_CREATE)(
 		typeof(*obj), uevent.uobject);
 	struct ib_qp_init_attr attr = {};
 	struct ib_qp_attr qp_attr = {};
+	struct ib_qp_semantics qp_semantics = {};
 	struct ib_uverbs_qp_cap cap = {};
 	struct ib_rwq_ind_table *rwq_ind_tbl = NULL;
 	struct ib_qp *qp;
@@ -177,6 +225,7 @@ static int UVERBS_HANDLER(UVERBS_METHOD_QP_CREATE)(
 	case IB_UVERBS_QPT_UC:
 	case IB_UVERBS_QPT_UD:
 	case IB_UVERBS_QPT_XRC_INI:
+	case IB_UVERBS_QPT_RU:
 	case IB_UVERBS_QPT_DRIVER:
 		if (uverbs_attr_is_valid(attrs,
 					 UVERBS_ATTR_CREATE_QP_XRCD_HANDLE) ||
@@ -251,6 +300,10 @@ static int UVERBS_HANDLER(UVERBS_METHOD_QP_CREATE)(
 		attr.create_flags |= IB_QP_CREATE_SOURCE_QPN;
 	}
 
+	ret = create_qp_opt_attrs(attrs, &attr, &qp_semantics);
+	if (ret)
+		return ret;
+
 	ret = create_qp_attr_set(attrs, device, &attr, &qp_attr);
 	if (ret)
 		return ret;
@@ -295,6 +348,11 @@ static int UVERBS_HANDLER(UVERBS_METHOD_QP_CREATE)(
 		goto err_put;
 	}
 	ib_qp_usecnt_inc(qp);
+
+	/* hold a reference to the job key, destroy will drop it */
+	qp->jkey = attr.jkey;
+	if (attr.jkey)
+		atomic_inc(&attr.jkey->usecnt);
 
 	if (attr.qp_type == IB_QPT_XRC_TGT) {
 		obj->uxrcd = container_of(xrcd_uobj, struct ib_uxrcd_object,
@@ -366,6 +424,17 @@ DECLARE_UVERBS_NAMED_METHOD(
 	UVERBS_ATTR_FLAGS_IN(UVERBS_ATTR_CREATE_QP_FLAGS,
 			     enum ib_uverbs_qp_create_flags,
 			     UA_OPTIONAL),
+	UVERBS_ATTR_PTR_IN(UVERBS_ATTR_CREATE_QP_SRC_ID,
+			   UVERBS_ATTR_TYPE(u32),
+			   UA_OPTIONAL),
+	UVERBS_ATTR_PTR_IN(UVERBS_ATTR_CREATE_QP_SEMANTICS,
+			   UVERBS_ATTR_STRUCT(struct ib_uverbs_qp_semantics,
+					      imm_data_size),
+			   UA_OPTIONAL),
+	UVERBS_ATTR_IDR(UVERBS_ATTR_CREATE_QP_JOB_KEY,
+			UVERBS_OBJECT_JKEY,
+			UVERBS_ACCESS_READ,
+			UA_OPTIONAL),
 	UVERBS_ATTR_PTR_IN(UVERBS_ATTR_CREATE_QP_ATTR,
 			   UVERBS_ATTR_STRUCT(struct ib_uverbs_ex_modify_qp,
 					      reserved),

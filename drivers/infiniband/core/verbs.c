@@ -2197,6 +2197,9 @@ int ib_destroy_qp_user(struct ib_qp *qp, struct ib_udata *udata)
 		atomic_dec(&cc->usecnt);
 	xa_destroy(&qp->comp_cntrs);
 
+	if (qp->jkey)
+		atomic_dec(&qp->jkey->usecnt);
+
 	ib_qp_usecnt_dec(qp);
 	if (sec)
 		ib_destroy_qp_security_end(sec);

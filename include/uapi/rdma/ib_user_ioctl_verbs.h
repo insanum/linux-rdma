@@ -304,6 +304,16 @@ struct ib_uverbs_buffer_desc {
 	__aligned_u64 length;
 };
 
+/* Extended memory registration, for devices whose memory keys are 64 bits
+ * wide and may be bound to a job. See UVERBS_ATTR_REG_MR_FLAGS.
+ */
+enum ib_uverbs_reg_mr_flags {
+	/* REQ_RKEY64 carries the key, rather than the device assigning one */
+	IB_UVERBS_REG_MR_USER_RKEY		= 1 << 0,
+	/* the region tolerates a replayed idempotent operation */
+	IB_UVERBS_REG_MR_IDEMPOTENT_SAFE	= 1 << 1,
+};
+
 /* A UET reliable unconnected queue pair number uses all 32 bits:
  *
  *	[ absolute 1b | reserved 7b | resource index 12b | PIDonFEP 12b ]

@@ -2340,6 +2340,7 @@ int ib_dereg_mr_user(struct ib_mr *mr, struct ib_udata *udata)
 	struct ib_pd *pd = mr->pd;
 	struct ib_dm *dm = mr->dm;
 	struct ib_dmah *dmah = mr->dmah;
+	struct ib_jkey *jkey = mr->jkey;
 	struct ib_sig_attrs *sig_attrs = mr->sig_attrs;
 	int ret;
 
@@ -2352,6 +2353,8 @@ int ib_dereg_mr_user(struct ib_mr *mr, struct ib_udata *udata)
 			atomic_dec(&dm->usecnt);
 		if (dmah)
 			atomic_dec(&dmah->usecnt);
+		if (jkey)
+			atomic_dec(&jkey->usecnt);
 		kfree(sig_attrs);
 	}
 

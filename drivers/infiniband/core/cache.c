@@ -139,6 +139,9 @@ static const char * const gid_type_str[] = {
 	[IB_GID_TYPE_IB]	= "IB/RoCE v1",
 	[IB_GID_TYPE_ROCE]	= "IB/RoCE v1",
 	[IB_GID_TYPE_ROCE_UDP_ENCAP]	= "RoCE v2",
+	[IB_GID_TYPE_UET_UDP]		= "UET UDP",
+	[IB_GID_TYPE_UET_IP]		= "UET IP",
+	[IB_GID_TYPE_UET_UFH]		= "UET UFH",
 };
 
 const char *ib_cache_gid_type_str(enum ib_gid_type gid_type)
@@ -392,10 +395,10 @@ static void del_gid(struct ib_device *ib_dev, u32 port,
 	write_lock_irq(&table->rwlock);
 	entry = table->data_vec[ix];
 	entry->state = GID_TABLE_ENTRY_PENDING_DEL;
-	/*
-	 * For non RoCE protocol, GID entry slot is ready to use.
+	/* Where the GID table is not derived from a netdev, the entry slot is
+	 * ready to use.
 	 */
-	if (!rdma_protocol_roce(ib_dev, port))
+	if (!rdma_port_gids_from_netdev(ib_dev, port))
 		table->data_vec[ix] = NULL;
 	write_unlock_irq(&table->rwlock);
 
@@ -447,7 +450,7 @@ static int add_modify_gid(struct ib_gid_table *table,
 	if (!entry)
 		return -ENOMEM;
 
-	if (rdma_protocol_roce(attr->device, attr->port_num)) {
+	if (rdma_port_gids_from_netdev(attr->device, attr->port_num)) {
 		ret = add_roce_gid(entry);
 		if (ret)
 			goto done;
@@ -1459,7 +1462,7 @@ ib_cache_update(struct ib_device *device, u32 port, bool update_gids,
 		goto err;
 	}
 
-	if (!rdma_protocol_roce(device, port) && update_gids) {
+	if (!rdma_port_gids_from_netdev(device, port) && update_gids) {
 		ret = config_non_roce_gid_cache(device, port,
 						tprops);
 		if (ret)

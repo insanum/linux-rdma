@@ -145,6 +145,9 @@ enum ib_gid_type {
 	IB_GID_TYPE_IB = IB_UVERBS_GID_TYPE_IB,
 	IB_GID_TYPE_ROCE = IB_UVERBS_GID_TYPE_ROCE_V1,
 	IB_GID_TYPE_ROCE_UDP_ENCAP = IB_UVERBS_GID_TYPE_ROCE_V2,
+	IB_GID_TYPE_UET_UDP = IB_UVERBS_GID_TYPE_UET_UDP,
+	IB_GID_TYPE_UET_IP = IB_UVERBS_GID_TYPE_UET_IP,
+	IB_GID_TYPE_UET_UFH = IB_UVERBS_GID_TYPE_UET_UFH,
 	IB_GID_TYPE_SIZE
 };
 
@@ -664,10 +667,18 @@ void rdma_free_hw_stats_struct(struct rdma_hw_stats *stats);
 #define RDMA_CORE_CAP_PROT_ROCE_UDP_ENCAP 0x00800000
 #define RDMA_CORE_CAP_PROT_RAW_PACKET   0x01000000
 #define RDMA_CORE_CAP_PROT_USNIC        0x02000000
+#define RDMA_CORE_CAP_PROT_UET_UDP      0x04000000
+#define RDMA_CORE_CAP_PROT_UET_IP       0x08000000
+#define RDMA_CORE_CAP_PROT_UET_UFH      0x10000000
+
+#define RDMA_CORE_CAP_PROT_UET         (RDMA_CORE_CAP_PROT_UET_UDP \
+					| RDMA_CORE_CAP_PROT_UET_IP  \
+					| RDMA_CORE_CAP_PROT_UET_UFH)
 
 #define RDMA_CORE_PORT_IB_GRH_REQUIRED (RDMA_CORE_CAP_IB_GRH_REQUIRED \
 					| RDMA_CORE_CAP_PROT_ROCE     \
-					| RDMA_CORE_CAP_PROT_ROCE_UDP_ENCAP)
+					| RDMA_CORE_CAP_PROT_ROCE_UDP_ENCAP \
+					| RDMA_CORE_CAP_PROT_UET)
 
 #define RDMA_CORE_PORT_IBA_IB          (RDMA_CORE_CAP_PROT_IB  \
 					| RDMA_CORE_CAP_IB_MAD \
@@ -690,6 +701,13 @@ void rdma_free_hw_stats_struct(struct rdma_hw_stats *stats);
 					| RDMA_CORE_CAP_IW_CM)
 #define RDMA_CORE_PORT_INTEL_OPA       (RDMA_CORE_PORT_IBA_IB  \
 					| RDMA_CORE_CAP_OPA_MAD)
+
+#define RDMA_CORE_PORT_UET_UDP		(RDMA_CORE_CAP_PROT_UET_UDP \
+					| RDMA_CORE_CAP_ETH_AH)
+#define RDMA_CORE_PORT_UET_IP		(RDMA_CORE_CAP_PROT_UET_IP \
+					| RDMA_CORE_CAP_ETH_AH)
+#define RDMA_CORE_PORT_UET_UFH		(RDMA_CORE_CAP_PROT_UET_UFH \
+					| RDMA_CORE_CAP_ETH_AH)
 
 #define RDMA_CORE_PORT_RAW_PACKET	(RDMA_CORE_CAP_PROT_RAW_PACKET)
 
@@ -3405,6 +3423,41 @@ static inline bool rdma_protocol_roce_eth_encap(const struct ib_device *device,
 {
 	return device->port_data[port_num].immutable.core_cap_flags &
 	       RDMA_CORE_CAP_PROT_ROCE;
+}
+
+static inline bool rdma_protocol_uet(const struct ib_device *device,
+				     u32 port_num)
+{
+	return device->port_data[port_num].immutable.core_cap_flags &
+	       RDMA_CORE_CAP_PROT_UET;
+}
+
+static inline bool rdma_protocol_uet_udp(const struct ib_device *device,
+					 u32 port_num)
+{
+	return device->port_data[port_num].immutable.core_cap_flags &
+	       RDMA_CORE_CAP_PROT_UET_UDP;
+}
+
+static inline bool rdma_protocol_uet_ip(const struct ib_device *device,
+					u32 port_num)
+{
+	return device->port_data[port_num].immutable.core_cap_flags &
+	       RDMA_CORE_CAP_PROT_UET_IP;
+}
+
+static inline bool rdma_protocol_uet_ufh(const struct ib_device *device,
+					 u32 port_num)
+{
+	return device->port_data[port_num].immutable.core_cap_flags &
+	       RDMA_CORE_CAP_PROT_UET_UFH;
+}
+
+static inline bool rdma_port_gids_from_netdev(const struct ib_device *device,
+					      u32 port_num)
+{
+	return rdma_protocol_roce(device, port_num) ||
+	       rdma_protocol_uet(device, port_num);
 }
 
 static inline bool rdma_protocol_iwarp(const struct ib_device *device,

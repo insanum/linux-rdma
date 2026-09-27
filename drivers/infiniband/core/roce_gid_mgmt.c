@@ -75,6 +75,9 @@ static const struct {
 } PORT_CAP_TO_GID_TYPE[] = {
 	{rdma_protocol_roce_eth_encap, IB_GID_TYPE_ROCE},
 	{rdma_protocol_roce_udp_encap, IB_GID_TYPE_ROCE_UDP_ENCAP},
+	{rdma_protocol_uet_udp, IB_GID_TYPE_UET_UDP},
+	{rdma_protocol_uet_ip, IB_GID_TYPE_UET_IP},
+	{rdma_protocol_uet_ufh, IB_GID_TYPE_UET_UFH},
 };
 
 #define CAP_TO_GID_TABLE_SIZE	ARRAY_SIZE(PORT_CAP_TO_GID_TYPE)
@@ -84,7 +87,7 @@ unsigned long roce_gid_type_mask_support(struct ib_device *ib_dev, u32 port)
 	int i;
 	unsigned int ret_flags = 0;
 
-	if (!rdma_protocol_roce(ib_dev, port))
+	if (!rdma_port_gids_from_netdev(ib_dev, port))
 		return 1UL << IB_GID_TYPE_IB;
 
 	for (i = 0; i < CAP_TO_GID_TABLE_SIZE; i++)
@@ -526,7 +529,7 @@ void rdma_roce_rescan_port(struct ib_device *ib_dev, u32 port)
 {
 	struct net_device *ndev = NULL;
 
-	if (rdma_protocol_roce(ib_dev, port)) {
+	if (rdma_port_gids_from_netdev(ib_dev, port)) {
 		ndev = ib_device_get_netdev(ib_dev, port);
 		if (!ndev)
 			return;

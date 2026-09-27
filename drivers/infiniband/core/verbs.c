@@ -862,6 +862,10 @@ int ib_init_ah_attr_from_wc(struct ib_device *device, u32 port_num,
 
 	might_sleep();
 
+	if (rdma_protocol_uet(device, port_num) &&
+	    !rdma_protocol_roce(device, port_num))
+		return -EPROTONOSUPPORT;
+
 	memset(ah_attr, 0, sizeof *ah_attr);
 	ah_attr->type = rdma_ah_find_type(device, port_num);
 	if (rdma_cap_eth_ah(device, port_num)) {

@@ -263,6 +263,8 @@ enum ib_uverbs_gid_type {
 	IB_UVERBS_GID_TYPE_IB,
 	IB_UVERBS_GID_TYPE_ROCE_V1,
 	IB_UVERBS_GID_TYPE_ROCE_V2,
+	IB_UVERBS_GID_TYPE_UET_UDP,
+	IB_UVERBS_GID_TYPE_UET_IP,
 };
 
 struct ib_uverbs_gid_entry {

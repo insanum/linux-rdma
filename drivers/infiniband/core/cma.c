@@ -293,6 +293,10 @@ int cma_set_default_gid_type(struct cma_device *cma_dev,
 	if (!rdma_is_port_valid(cma_dev->device, port))
 		return -EINVAL;
 
+	if (default_gid_type == IB_GID_TYPE_UET_UDP ||
+	    default_gid_type == IB_GID_TYPE_UET_IP)
+		return -EINVAL;
+
 	if (default_gid_type == IB_GID_TYPE_IB &&
 	    rdma_protocol_roce_eth_encap(cma_dev->device, port))
 		default_gid_type = IB_GID_TYPE_ROCE;
@@ -5425,10 +5429,13 @@ static int cma_add_one(struct ib_device *device)
 	rdma_for_each_port (device, i) {
 		supported_gids = roce_gid_type_mask_support(device, i);
 		WARN_ON(!supported_gids);
+		/* the CM has no use for a UET GID, so a UET-only port keeps 0 */
+		supported_gids &= ~(BIT(IB_GID_TYPE_UET_UDP) |
+				    BIT(IB_GID_TYPE_UET_IP));
 		if (supported_gids & (1 << CMA_PREFERRED_ROCE_GID_TYPE))
 			cma_dev->default_gid_type[i - rdma_start_port(device)] =
 				CMA_PREFERRED_ROCE_GID_TYPE;
-		else
+		else if (supported_gids)
 			cma_dev->default_gid_type[i - rdma_start_port(device)] =
 				find_first_bit(&supported_gids, BITS_PER_LONG);
 		cma_dev->default_roce_tos[i - rdma_start_port(device)] = 0;

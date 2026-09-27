@@ -1265,6 +1265,13 @@ struct ib_qp_init_attr {
 	u32			port_num;
 	struct ib_rwq_ind_table *rwq_ind_tbl;
 	u32			source_qpn;
+
+	/* The attributes the QP would otherwise be modified with. Used for
+	 * transports that support ready to send as soon as the QP exists and
+	 * requires no modify steps to carry configuration.
+	 */
+	struct ib_qp_attr	*qp_attr;
+	int			qp_attr_mask;
 };
 
 struct ib_qp_open_attr {

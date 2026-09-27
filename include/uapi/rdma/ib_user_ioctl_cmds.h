@@ -77,6 +77,12 @@ enum uverbs_methods_device {
 	UVERBS_METHOD_QUERY_GID_ENTRY,
 	UVERBS_METHOD_QUERY_PORT_SPEED,
 	UVERBS_METHOD_QUERY_COMP_CNTR_CAPS,
+	UVERBS_METHOD_QUERY_QP_SEMANTICS,
+};
+
+enum uverbs_attrs_query_qp_semantics_attr_ids {
+	UVERBS_ATTR_QUERY_QP_SEMANTICS_QP_TYPE,
+	UVERBS_ATTR_QUERY_QP_SEMANTICS_RESP,
 };
 
 enum uverbs_attrs_invoke_write_cmd_attr_ids {

@@ -561,24 +561,23 @@ rdma_update_sgid_attr(struct rdma_ah_attr *ah_attr,
 }
 
 static struct ib_ah *_rdma_create_ah(struct ib_pd *pd,
-				     struct rdma_ah_attr *ah_attr,
-				     u32 flags,
-				     struct ib_udata *udata,
-				     struct net_device *xmit_slave)
+				     struct rdma_ah_init_attr *init_attr,
+				     struct ib_udata *udata)
 {
-	struct rdma_ah_init_attr init_attr = {};
+	struct rdma_ah_attr *ah_attr = init_attr->ah_attr;
 	struct ib_device *device = pd->device;
 	struct ib_ah *ah;
 	int ret;
 
-	might_sleep_if(flags & RDMA_CREATE_AH_SLEEPABLE);
+	might_sleep_if(init_attr->flags & RDMA_CREATE_AH_SLEEPABLE);
 
 	if (!udata && !device->ops.create_ah)
 		return ERR_PTR(-EOPNOTSUPP);
 
 	ah = rdma_zalloc_drv_obj_gfp(
 		device, ib_ah,
-		(flags & RDMA_CREATE_AH_SLEEPABLE) ? GFP_KERNEL : GFP_ATOMIC);
+		(init_attr->flags & RDMA_CREATE_AH_SLEEPABLE) ? GFP_KERNEL :
+								GFP_ATOMIC);
 	if (!ah)
 		return ERR_PTR(-ENOMEM);
 
@@ -586,14 +585,12 @@ static struct ib_ah *_rdma_create_ah(struct ib_pd *pd,
 	ah->pd = pd;
 	ah->type = ah_attr->type;
 	ah->sgid_attr = rdma_update_sgid_attr(ah_attr, NULL);
-	init_attr.ah_attr = ah_attr;
-	init_attr.flags = flags;
-	init_attr.xmit_slave = xmit_slave;
 
 	if (udata)
-		ret = device->ops.create_user_ah(ah, &init_attr, udata);
+		ret = device->ops.create_user_ah(ah, init_attr, udata);
 	else
-		ret = device->ops.create_ah(ah, &init_attr, NULL);
+		ret = device->ops.create_ah(ah, init_attr, NULL);
+
 	if (ret) {
 		if (ah->sgid_attr)
 			rdma_put_gid_attr(ah->sgid_attr);
@@ -619,6 +616,7 @@ static struct ib_ah *_rdma_create_ah(struct ib_pd *pd,
 struct ib_ah *rdma_create_ah(struct ib_pd *pd, struct rdma_ah_attr *ah_attr,
 			     u32 flags)
 {
+	struct rdma_ah_init_attr init_attr = {};
 	const struct ib_gid_attr *old_sgid_attr;
 	struct net_device *slave;
 	struct ib_ah *ah;
@@ -634,7 +632,12 @@ struct ib_ah *rdma_create_ah(struct ib_pd *pd, struct rdma_ah_attr *ah_attr,
 		rdma_unfill_sgid_attr(ah_attr, old_sgid_attr);
 		return ERR_CAST(slave);
 	}
-	ah = _rdma_create_ah(pd, ah_attr, flags, NULL, slave);
+
+	init_attr.ah_attr = ah_attr;
+	init_attr.flags = flags;
+	init_attr.xmit_slave = slave;
+
+	ah = _rdma_create_ah(pd, &init_attr, NULL);
 	rdma_lag_put_ah_roce_slave(slave);
 	rdma_unfill_sgid_attr(ah_attr, old_sgid_attr);
 	return ah;
@@ -646,7 +649,7 @@ EXPORT_SYMBOL(rdma_create_ah);
  * given address vector.
  * It resolves destination mac address for ah attribute of RoCE type.
  * @pd: The protection domain associated with the address handle.
- * @ah_attr: The attributes of the address vector.
+ * @init_attr: The attributes of the address vector.
  * @udata: pointer to user's input output buffer information need by
  *         provider driver.
  *
@@ -655,9 +658,10 @@ EXPORT_SYMBOL(rdma_create_ah);
  * in all UD QP post sends.
  */
 struct ib_ah *rdma_create_user_ah(struct ib_pd *pd,
-				  struct rdma_ah_attr *ah_attr,
+				  struct rdma_ah_init_attr *init_attr,
 				  struct ib_udata *udata)
 {
+	struct rdma_ah_attr *ah_attr = init_attr->ah_attr;
 	const struct ib_gid_attr *old_sgid_attr;
 	struct ib_ah *ah;
 	int err;
@@ -674,8 +678,9 @@ struct ib_ah *rdma_create_user_ah(struct ib_pd *pd,
 		}
 	}
 
-	ah = _rdma_create_ah(pd, ah_attr, RDMA_CREATE_AH_SLEEPABLE,
-			     udata, NULL);
+	init_attr->flags |= RDMA_CREATE_AH_SLEEPABLE;
+
+	ah = _rdma_create_ah(pd, init_attr, udata);
 
 out:
 	rdma_unfill_sgid_attr(ah_attr, old_sgid_attr);

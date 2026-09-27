@@ -410,6 +410,14 @@ enum uverbs_attrs_xrcd_destroy_ids {
 
 enum uverbs_methods_ah {
 	UVERBS_METHOD_AH_DESTROY,
+	UVERBS_METHOD_AH_EX_CREATE,
+};
+
+enum uverbs_attrs_create_ah_ex_cmd_attr_ids {
+	UVERBS_ATTR_CREATE_AH_EX_HANDLE,
+	UVERBS_ATTR_CREATE_AH_EX_PD_HANDLE,
+	UVERBS_ATTR_CREATE_AH_EX_AH_ATTR_EX,
+	UVERBS_ATTR_CREATE_AH_EX_FLAGS,
 };
 
 enum uverbs_attrs_ah_destroy_ids {

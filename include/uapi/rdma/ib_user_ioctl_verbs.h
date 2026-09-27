@@ -317,6 +317,15 @@ struct ib_uverbs_buffer_desc {
 #define IB_UVERBS_QPN_UET_RI_SHIFT		12
 #define IB_UVERBS_QPN_UET_ABSOLUTE_ADDR_BIT	0x80000000
 
+/* An address handle that names a peer using both transport+network addresses.
+ * Used for reliable unconnected QPs in both work request address handles and
+ * a Job address table.
+ */
+struct ib_uverbs_ah_attr_ex {
+	struct ib_uverbs_ah_attr ah_attr;
+	__u32 remote_qpn;
+};
+
 enum ib_uverbs_comp_cntr_entry {
 	IB_UVERBS_COMP_CNTR_ENTRY_COMP,
 	IB_UVERBS_COMP_CNTR_ENTRY_ERR,

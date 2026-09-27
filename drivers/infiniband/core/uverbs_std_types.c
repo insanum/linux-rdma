@@ -184,6 +184,96 @@ DECLARE_UVERBS_NAMED_OBJECT(UVERBS_OBJECT_MW,
 			    UVERBS_TYPE_ALLOC_IDR(uverbs_free_mw),
 			    &UVERBS_METHOD(UVERBS_METHOD_MW_DESTROY));
 
+/* Creating an address handle is still a write() command whose request
+ * struct cannot grow. A transport (reliable unconnected) that resolves a
+ * peer using both transport and network addresses requires additional
+ * fields in the address handle. Here the address handle create command is
+ * made available as an ioctl method, where additional attributes can be
+ * carried.
+ */
+static int UVERBS_HANDLER(UVERBS_METHOD_AH_EX_CREATE)(
+	struct uverbs_attr_bundle *attrs)
+{
+	struct ib_uobject *uobj = uverbs_attr_get_uobject(
+		attrs, UVERBS_ATTR_CREATE_AH_EX_HANDLE);
+	struct ib_pd *pd =
+		uverbs_attr_get_obj(attrs, UVERBS_ATTR_CREATE_AH_EX_PD_HANDLE);
+	struct ib_device *ib_dev = attrs->context->device;
+	struct ib_uverbs_ah_attr_ex uah;
+	struct rdma_ah_init_attr init_attr = {};
+	struct rdma_ah_attr_ex attr = {};
+	struct ib_ah *ah;
+	u32 flags = 0;
+	int ret;
+
+	if (IS_ERR(pd))
+		return PTR_ERR(pd);
+
+	ret = uverbs_copy_from(&uah, attrs,
+			       UVERBS_ATTR_CREATE_AH_EX_AH_ATTR_EX);
+	if (ret)
+		return ret;
+
+	ret = uverbs_copy_from(&flags, attrs, UVERBS_ATTR_CREATE_AH_EX_FLAGS);
+	if (IS_UVERBS_COPY_ERR(ret))
+		return ret;
+
+	if (!rdma_is_port_valid(ib_dev, uah.ah_attr.port_num))
+		return -EINVAL;
+
+	attr.ah_attr.type = rdma_ah_find_type(ib_dev, uah.ah_attr.port_num);
+	rdma_ah_set_make_grd(&attr.ah_attr, false);
+	rdma_ah_set_dlid(&attr.ah_attr, uah.ah_attr.dlid);
+	rdma_ah_set_sl(&attr.ah_attr, uah.ah_attr.sl);
+	rdma_ah_set_path_bits(&attr.ah_attr, uah.ah_attr.src_path_bits);
+	rdma_ah_set_static_rate(&attr.ah_attr, uah.ah_attr.static_rate);
+	rdma_ah_set_port_num(&attr.ah_attr, uah.ah_attr.port_num);
+
+	if (uah.ah_attr.is_global) {
+		rdma_ah_set_grh(&attr.ah_attr, NULL,
+				uah.ah_attr.grh.flow_label,
+				uah.ah_attr.grh.sgid_index,
+				uah.ah_attr.grh.hop_limit,
+				uah.ah_attr.grh.traffic_class);
+		rdma_ah_set_dgid_raw(&attr.ah_attr, uah.ah_attr.grh.dgid);
+	} else {
+		rdma_ah_set_ah_flags(&attr.ah_attr, 0);
+	}
+
+	attr.remote_qpn = uah.remote_qpn;
+
+	init_attr.ah_attr = &attr.ah_attr;
+	init_attr.ah_attr_ex = &attr;
+
+	ah = rdma_create_user_ah(pd, &init_attr, &attrs->driver_udata);
+	if (IS_ERR(ah))
+		return PTR_ERR(ah);
+
+	ah->uobject = uobj;
+	uobj->object = ah;
+
+	return 0;
+}
+
+DECLARE_UVERBS_NAMED_METHOD(
+	UVERBS_METHOD_AH_EX_CREATE,
+	UVERBS_ATTR_IDR(UVERBS_ATTR_CREATE_AH_EX_HANDLE,
+			UVERBS_OBJECT_AH,
+			UVERBS_ACCESS_NEW,
+			UA_MANDATORY),
+	UVERBS_ATTR_IDR(UVERBS_ATTR_CREATE_AH_EX_PD_HANDLE,
+			UVERBS_OBJECT_PD,
+			UVERBS_ACCESS_READ,
+			UA_MANDATORY),
+	UVERBS_ATTR_PTR_IN(UVERBS_ATTR_CREATE_AH_EX_AH_ATTR_EX,
+			   UVERBS_ATTR_STRUCT(struct ib_uverbs_ah_attr_ex,
+					      remote_qpn),
+			   UA_MANDATORY),
+	UVERBS_ATTR_PTR_IN(UVERBS_ATTR_CREATE_AH_EX_FLAGS,
+			   UVERBS_ATTR_TYPE(u32),
+			   UA_OPTIONAL),
+	UVERBS_ATTR_UHW());
+
 DECLARE_UVERBS_NAMED_METHOD_DESTROY(
 	UVERBS_METHOD_AH_DESTROY,
 	UVERBS_ATTR_IDR(UVERBS_ATTR_DESTROY_AH_HANDLE,
@@ -193,7 +283,8 @@ DECLARE_UVERBS_NAMED_METHOD_DESTROY(
 
 DECLARE_UVERBS_NAMED_OBJECT(UVERBS_OBJECT_AH,
 			    UVERBS_TYPE_ALLOC_IDR(uverbs_free_ah),
-			    &UVERBS_METHOD(UVERBS_METHOD_AH_DESTROY));
+			    &UVERBS_METHOD(UVERBS_METHOD_AH_DESTROY),
+			    &UVERBS_METHOD(UVERBS_METHOD_AH_EX_CREATE));
 
 DECLARE_UVERBS_NAMED_METHOD_DESTROY(
 	UVERBS_METHOD_FLOW_DESTROY,

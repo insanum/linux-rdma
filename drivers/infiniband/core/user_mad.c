@@ -512,6 +512,7 @@ static ssize_t ib_umad_write(struct file *filp, const char __user *buf,
 	struct ib_umad_packet *packet;
 	struct ib_mad_agent *agent;
 	struct rdma_ah_attr ah_attr;
+	struct rdma_ah_init_attr init_attr = {};
 	struct ib_ah *ah;
 	__be64 *tid;
 	int ret, hdr_len, copy_offset, rmpp_active;
@@ -569,7 +570,8 @@ static ssize_t ib_umad_write(struct file *filp, const char __user *buf,
 		rdma_ah_set_dgid_raw(&ah_attr, packet->mad.hdr.gid);
 	}
 
-	ah = rdma_create_user_ah(agent->qp->pd, &ah_attr, NULL);
+	init_attr.ah_attr = &ah_attr;
+	ah = rdma_create_user_ah(agent->qp->pd, &init_attr, NULL);
 	if (IS_ERR(ah)) {
 		ret = PTR_ERR(ah);
 		goto err_up;

@@ -976,10 +976,14 @@ struct ib_mr_status {
  */
 __attribute_const__ enum ib_rate mult_to_ib_rate(int mult);
 
+struct rdma_ah_attr_ex;
+
 struct rdma_ah_init_attr {
 	struct rdma_ah_attr *ah_attr;
 	u32 flags;
 	struct net_device *xmit_slave;
+	/* set to name a peer by both transport+network addresses */
+	struct rdma_ah_attr_ex *ah_attr_ex;
 };
 
 enum rdma_ah_attr_type {
@@ -1016,6 +1020,11 @@ struct rdma_ah_attr {
 		struct roce_ah_attr roce;
 		struct opa_ah_attr opa;
 	};
+};
+
+struct rdma_ah_attr_ex {
+	struct rdma_ah_attr	ah_attr;
+	u32			remote_qpn;
 };
 
 enum ib_wc_status {
@@ -3911,7 +3920,7 @@ struct ib_ah *rdma_create_ah(struct ib_pd *pd, struct rdma_ah_attr *ah_attr,
  * in all UD QP post sends.
  */
 struct ib_ah *rdma_create_user_ah(struct ib_pd *pd,
-				  struct rdma_ah_attr *ah_attr,
+				  struct rdma_ah_init_attr *init_attr,
 				  struct ib_udata *udata);
 /**
  * ib_get_gids_from_rdma_hdr - Get sgid and dgid from GRH or IPv4 header
@@ -4990,7 +4999,8 @@ static inline struct ib_global_route
 	return &attr->grh;
 }
 
-static inline void rdma_ah_set_dgid_raw(struct rdma_ah_attr *attr, void *dgid)
+static inline void rdma_ah_set_dgid_raw(struct rdma_ah_attr *attr,
+					const void *dgid)
 {
 	struct ib_global_route *grh = rdma_ah_retrieve_grh(attr);
 

@@ -2421,6 +2421,7 @@ static int ib_uverbs_create_ah(struct uverbs_attr_bundle *attrs)
 	struct ib_pd			*pd;
 	struct ib_ah			*ah;
 	struct rdma_ah_attr		attr = {};
+	struct rdma_ah_init_attr	init_attr = {};
 	int ret;
 	struct ib_device *ib_dev;
 
@@ -2461,7 +2462,8 @@ static int ib_uverbs_create_ah(struct uverbs_attr_bundle *attrs)
 		rdma_ah_set_ah_flags(&attr, 0);
 	}
 
-	ah = rdma_create_user_ah(pd, &attr, &attrs->driver_udata);
+	init_attr.ah_attr = &attr;
+	ah = rdma_create_user_ah(pd, &init_attr, &attrs->driver_udata);
 	if (IS_ERR(ah)) {
 		ret = PTR_ERR(ah);
 		goto err_put;

@@ -2003,6 +2003,8 @@ struct ib_qp {
 	struct list_head	xrcd_list;
 	struct xarray		comp_cntrs; /* op_mask -> comp_cntr */
 	u32			comp_cntr_op_mask;
+	/* regions attached to this QP, each held until detach or destroy */
+	struct xarray		attached_mrs;
 
 	/* count times opened, mcast attaches, flow attaches */
 	atomic_t		usecnt;
@@ -2094,8 +2096,11 @@ struct ib_mr {
 	struct ib_jkey	  *jkey;
 	/* the region this one was derived from, NULL if registered fresh */
 	struct ib_mr	  *parent;
-	/* regions derived from this one that are still registered */
+	/* regions derived from this one, and an attachment, that hold it */
 	atomic_t	   usecnt;
+	/* the QP this region is attached to, NULL if none */
+	struct ib_qp	  *attached_qp;
+	u32		   attach_id; /* index in attached_qp->attached_mrs */
 
 	struct ib_dm      *dm;
 	struct ib_sig_attrs *sig_attrs; /* only for IB_MR_TYPE_INTEGRITY MRs */
@@ -2852,6 +2857,11 @@ struct ib_device_ops {
 					struct ib_mr_ex_attr *attr,
 					struct ib_udata *udata);
 	int (*dereg_mr)(struct ib_mr *mr, struct ib_udata *udata);
+	/* attach/detach a region so it is bound to single QP (restricted).
+	 * destroy_qp ends the QP's bindings, then core releases the regions.
+	 */
+	int (*qp_attach_mr)(struct ib_qp *qp, struct ib_mr *mr);
+	int (*qp_detach_mr)(struct ib_qp *qp, struct ib_mr *mr);
 	int (*query_qp_semantics)(struct ib_device *device,
 				  enum ib_qp_type qp_type,
 				  struct ib_qp_semantics *sem);
@@ -4867,6 +4877,7 @@ static inline void ib_mr_init_core_refs(struct ib_mr *mr)
 {
 	mr->jkey = NULL;
 	mr->parent = NULL;
+	mr->attached_qp = NULL;
 	atomic_set(&mr->usecnt, 0);
 
 	if (!(mr->device->attrs.device_cap_flags & IB_DEVICE_KEY64)) {

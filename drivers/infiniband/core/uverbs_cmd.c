@@ -1746,6 +1746,37 @@ static int modify_qp_mask(enum ib_qp_type qp_type, int mask)
 	}
 }
 
+/* The ib_uverbs_ah_attr counterpart of copy_ah_attr_from_uverbs() below,
+ * which takes the modify QP layout. This one also rejects an invalid port.
+ */
+int copy_ah_attr_from_uverbs_ah(struct ib_device *dev,
+				struct rdma_ah_attr *rdma_attr,
+				const struct ib_uverbs_ah_attr *uverb_attr)
+{
+	if (!rdma_is_port_valid(dev, uverb_attr->port_num))
+		return -EINVAL;
+
+	rdma_attr->type = rdma_ah_find_type(dev, uverb_attr->port_num);
+	rdma_ah_set_make_grd(rdma_attr, false);
+	rdma_ah_set_dlid(rdma_attr, uverb_attr->dlid);
+	rdma_ah_set_sl(rdma_attr, uverb_attr->sl);
+	rdma_ah_set_path_bits(rdma_attr, uverb_attr->src_path_bits);
+	rdma_ah_set_static_rate(rdma_attr, uverb_attr->static_rate);
+	rdma_ah_set_port_num(rdma_attr, uverb_attr->port_num);
+
+	if (uverb_attr->is_global) {
+		rdma_ah_set_grh(rdma_attr, NULL, uverb_attr->grh.flow_label,
+				uverb_attr->grh.sgid_index,
+				uverb_attr->grh.hop_limit,
+				uverb_attr->grh.traffic_class);
+		rdma_ah_set_dgid_raw(rdma_attr, uverb_attr->grh.dgid);
+	} else {
+		rdma_ah_set_ah_flags(rdma_attr, 0);
+	}
+
+	return 0;
+}
+
 static void copy_ah_attr_from_uverbs(struct ib_device *dev,
 				     struct rdma_ah_attr *rdma_attr,
 				     struct ib_uverbs_qp_dest *uverb_attr)
@@ -2435,6 +2466,7 @@ static int ib_uverbs_create_ah(struct uverbs_attr_bundle *attrs)
 	struct ib_pd			*pd;
 	struct ib_ah			*ah;
 	struct rdma_ah_attr		attr = {};
+	struct rdma_ah_init_attr	init_attr = {};
 	int ret;
 	struct ib_device *ib_dev;
 
@@ -2446,36 +2478,18 @@ static int ib_uverbs_create_ah(struct uverbs_attr_bundle *attrs)
 	if (IS_ERR(uobj))
 		return PTR_ERR(uobj);
 
-	if (!rdma_is_port_valid(ib_dev, cmd.attr.port_num)) {
-		ret = -EINVAL;
-		goto err;
-	}
-
 	pd = uobj_get_obj_read(pd, UVERBS_OBJECT_PD, cmd.pd_handle, attrs);
 	if (IS_ERR(pd)) {
 		ret = PTR_ERR(pd);
 		goto err;
 	}
 
-	attr.type = rdma_ah_find_type(ib_dev, cmd.attr.port_num);
-	rdma_ah_set_make_grd(&attr, false);
-	rdma_ah_set_dlid(&attr, cmd.attr.dlid);
-	rdma_ah_set_sl(&attr, cmd.attr.sl);
-	rdma_ah_set_path_bits(&attr, cmd.attr.src_path_bits);
-	rdma_ah_set_static_rate(&attr, cmd.attr.static_rate);
-	rdma_ah_set_port_num(&attr, cmd.attr.port_num);
+	ret = copy_ah_attr_from_uverbs_ah(ib_dev, &attr, &cmd.attr);
+	if (ret)
+		goto err_put;
 
-	if (cmd.attr.is_global) {
-		rdma_ah_set_grh(&attr, NULL, cmd.attr.grh.flow_label,
-				cmd.attr.grh.sgid_index,
-				cmd.attr.grh.hop_limit,
-				cmd.attr.grh.traffic_class);
-		rdma_ah_set_dgid_raw(&attr, cmd.attr.grh.dgid);
-	} else {
-		rdma_ah_set_ah_flags(&attr, 0);
-	}
-
-	ah = rdma_create_user_ah(pd, &attr, &attrs->driver_udata);
+	init_attr.ah_attr = &attr;
+	ah = rdma_create_user_ah(pd, &init_attr, &attrs->driver_udata);
 	if (IS_ERR(ah)) {
 		ret = PTR_ERR(ah);
 		goto err_put;

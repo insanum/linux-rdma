@@ -236,6 +236,9 @@ int ib_uverbs_dealloc_xrcd(struct ib_uobject *uobject, struct ib_xrcd *xrcd,
 int uverbs_dealloc_mw(struct ib_mw *mw);
 void ib_uverbs_detach_umcast(struct ib_qp *qp,
 			     struct ib_uqp_object *uobj);
+int copy_ah_attr_from_uverbs_ah(struct ib_device *dev,
+				struct rdma_ah_attr *rdma_attr,
+				const struct ib_uverbs_ah_attr *uverb_attr);
 
 struct bundle_alloc_head {
 	struct_group_tagged(bundle_alloc_head_hdr, hdr,

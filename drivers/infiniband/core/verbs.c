@@ -1333,10 +1333,23 @@ static struct ib_qp *create_qp(struct ib_device *dev, struct ib_pd *pd,
 		goto err_security;
 
 	rdma_restrack_add(&qp->res);
+
+	/* restrack keys a QP by its number alone, so an RU QP whose number
+	 * another QP has, as one in another job may, is refused rather than
+	 * left untracked
+	 */
+	if (qp->qp_type == IB_QPT_RU && !qp->res.valid) {
+		ret = -EADDRINUSE;
+		goto err_track;
+	}
+
 	return qp;
 
+err_track:
+	ib_destroy_qp_security_begin(qp->qp_sec);
 err_security:
 	qp->device->ops.destroy_qp(qp, uverbs_get_cleared_udata(uattrs));
+	ib_destroy_qp_security_end(qp->qp_sec);
 err_create:
 	rdma_restrack_put(&qp->res);
 	xa_destroy(&qp->comp_cntrs);

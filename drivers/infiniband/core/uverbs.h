@@ -174,6 +174,12 @@ struct ib_uxrcd_object {
 	atomic_t		refcnt;
 };
 
+struct ib_ujob_object {
+	struct ib_uobject	uobject;
+	/* job keys created through this handle */
+	atomic_t		refcnt;
+};
+
 struct ib_usrq_object {
 	struct ib_uevent_object	uevent;
 	struct ib_uxrcd_object *uxrcd;
@@ -230,6 +236,7 @@ void ib_uverbs_detach_umcast(struct ib_qp *qp,
 int copy_ah_attr_from_uverbs_ah(struct ib_device *dev,
 				struct rdma_ah_attr *rdma_attr,
 				const struct ib_uverbs_ah_attr *uverb_attr);
+void ib_uverbs_revoke_jobs(struct ib_device *device);
 
 struct bundle_alloc_head {
 	struct_group_tagged(bundle_alloc_head_hdr, hdr,

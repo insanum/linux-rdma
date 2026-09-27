@@ -1282,6 +1282,11 @@ static void ib_uverbs_remove_one(struct ib_device *device, void *client_data)
 	if (wait_clients)
 		wait_for_completion(&uverbs_dev->comp);
 
+	/* Every handle is gone, only an exported job can still hold the
+	 * device.
+	 */
+	ib_uverbs_revoke_jobs(device);
+
 	put_device(&uverbs_dev->dev);
 }
 

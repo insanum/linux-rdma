@@ -690,6 +690,44 @@ out:
 }
 EXPORT_SYMBOL(rdma_create_user_ah);
 
+/**
+ * rdma_job_addr_insert - Insert a peer into a job's address table
+ * @job: The job.
+ * @index: The entry in the job's address table.
+ * @ah_attr: The peer's address and queue pair.
+ * @flags: Insert flags.
+ *
+ * The address is resolved as rdma_create_user_ah() resolves an address
+ * handle's: the source GID attribute is filled in, and for an Ethernet
+ * address so is the destination MAC.
+ *
+ * Return: 0 on success, or a negative errno.
+ */
+int rdma_job_addr_insert(struct ib_job *job, u32 index,
+			 struct rdma_ah_attr_ex *ah_attr, u32 flags)
+{
+	struct rdma_ah_attr *attr = &ah_attr->ah_attr;
+	const struct ib_gid_attr *old_sgid_attr;
+	int ret;
+
+	ret = rdma_fill_sgid_attr(job->device, attr, &old_sgid_attr);
+	if (ret)
+		return ret;
+
+	if (attr->type == RDMA_AH_ATTR_TYPE_ROCE) {
+		ret = ib_resolve_eth_dmac(job->device, attr);
+		if (ret)
+			goto out;
+	}
+
+	ret = job->device->ops.job_addr_insert(job, index, ah_attr, flags);
+
+out:
+	rdma_unfill_sgid_attr(attr, old_sgid_attr);
+	return ret;
+}
+EXPORT_SYMBOL(rdma_job_addr_insert);
+
 int ib_get_rdma_header_version(const union rdma_network_hdr *hdr)
 {
 	const struct iphdr *ip4h = (struct iphdr *)&hdr->roce4grh;

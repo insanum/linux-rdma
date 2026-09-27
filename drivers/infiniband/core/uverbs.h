@@ -307,6 +307,12 @@ struct ib_uverbs_flow_spec {
 	};
 };
 
+int ib_uverbs_copy_qp_attr(struct uverbs_attr_bundle *attrs,
+			   struct ib_device *device,
+			   struct ib_qp_attr *attr,
+			   const struct ib_uverbs_ex_modify_qp *src,
+			   u32 mask);
+
 int ib_uverbs_kern_spec_to_ib_spec_filter(enum ib_flow_spec_type type,
 					  const void *kern_spec_mask,
 					  const void *kern_spec_val,

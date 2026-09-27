@@ -1748,7 +1748,7 @@ static int modify_qp_mask(enum ib_qp_type qp_type, int mask)
 
 static void copy_ah_attr_from_uverbs(struct ib_device *dev,
 				     struct rdma_ah_attr *rdma_attr,
-				     struct ib_uverbs_qp_dest *uverb_attr)
+				     const struct ib_uverbs_qp_dest *uverb_attr)
 {
 	rdma_attr->type = rdma_ah_find_type(dev, uverb_attr->port_num);
 	if (uverb_attr->is_global) {
@@ -1767,6 +1767,95 @@ static void copy_ah_attr_from_uverbs(struct ib_device *dev,
 	rdma_ah_set_static_rate(rdma_attr, uverb_attr->static_rate);
 	rdma_ah_set_port_num(rdma_attr, uverb_attr->port_num);
 	rdma_ah_set_make_grd(rdma_attr, false);
+}
+
+/* Validate a set of QP attributes that came from userspace and copy the ones
+ * the mask names into their kernel form. Shared by the modify command, and by
+ * queue pair creation which takes the same set of attributes for a transport
+ * that is ready to send as soon as the QP is created.
+ */
+int ib_uverbs_copy_qp_attr(struct uverbs_attr_bundle *attrs,
+			   struct ib_device *device,
+			   struct ib_qp_attr *attr,
+			   const struct ib_uverbs_ex_modify_qp *src,
+			   u32 mask)
+{
+	if ((mask & IB_QP_PORT) &&
+	    !rdma_is_port_valid(device, src->base.port_num))
+		return -EINVAL;
+
+	if ((mask & IB_QP_AV) &&
+	    !rdma_is_port_valid(device, src->base.dest.port_num))
+		return -EINVAL;
+
+	if ((mask & IB_QP_ALT_PATH) &&
+	    (!rdma_is_port_valid(device, src->base.alt_port_num) ||
+	     !rdma_is_port_valid(device, src->base.alt_dest.port_num) ||
+	     src->base.alt_port_num != src->base.alt_dest.port_num))
+		return -EINVAL;
+
+	if (((mask & IB_QP_CUR_STATE) && src->base.cur_qp_state > IB_QPS_ERR) ||
+	    ((mask & IB_QP_STATE) && src->base.qp_state > IB_QPS_ERR))
+		return -EINVAL;
+
+	if (mask & IB_QP_STATE)
+		attr->qp_state = src->base.qp_state;
+	if (mask & IB_QP_CUR_STATE)
+		attr->cur_qp_state = src->base.cur_qp_state;
+	if (mask & IB_QP_PATH_MTU)
+		attr->path_mtu = src->base.path_mtu;
+	if (mask & IB_QP_PATH_MIG_STATE)
+		attr->path_mig_state = src->base.path_mig_state;
+	if (mask & IB_QP_QKEY) {
+		if (src->base.qkey & IB_QP_SET_QKEY &&
+		    !(rdma_nl_get_privileged_qkey() ||
+		      rdma_uattrs_has_raw_cap(attrs)))
+			return -EPERM;
+		attr->qkey = src->base.qkey;
+	}
+	if (mask & IB_QP_RQ_PSN)
+		attr->rq_psn = src->base.rq_psn;
+	if (mask & IB_QP_SQ_PSN)
+		attr->sq_psn = src->base.sq_psn;
+	if (mask & IB_QP_DEST_QPN)
+		attr->dest_qp_num = src->base.dest_qp_num;
+	if (mask & IB_QP_ACCESS_FLAGS)
+		attr->qp_access_flags = src->base.qp_access_flags;
+	if (mask & IB_QP_PKEY_INDEX)
+		attr->pkey_index = src->base.pkey_index;
+	if (mask & IB_QP_EN_SQD_ASYNC_NOTIFY)
+		attr->en_sqd_async_notify = src->base.en_sqd_async_notify;
+	if (mask & IB_QP_MAX_QP_RD_ATOMIC)
+		attr->max_rd_atomic = src->base.max_rd_atomic;
+	if (mask & IB_QP_MAX_DEST_RD_ATOMIC)
+		attr->max_dest_rd_atomic = src->base.max_dest_rd_atomic;
+	if (mask & IB_QP_MIN_RNR_TIMER)
+		attr->min_rnr_timer = src->base.min_rnr_timer;
+	if (mask & IB_QP_PORT)
+		attr->port_num = src->base.port_num;
+	if (mask & IB_QP_TIMEOUT)
+		attr->timeout = src->base.timeout;
+	if (mask & IB_QP_RETRY_CNT)
+		attr->retry_cnt = src->base.retry_cnt;
+	if (mask & IB_QP_RNR_RETRY)
+		attr->rnr_retry = src->base.rnr_retry;
+	if (mask & IB_QP_ALT_PATH) {
+		attr->alt_port_num = src->base.alt_port_num;
+		attr->alt_timeout = src->base.alt_timeout;
+		attr->alt_pkey_index = src->base.alt_pkey_index;
+	}
+	if (mask & IB_QP_RATE_LIMIT)
+		attr->rate_limit = src->rate_limit;
+
+	if (mask & IB_QP_AV)
+		copy_ah_attr_from_uverbs(device, &attr->ah_attr,
+					 &src->base.dest);
+
+	if (mask & IB_QP_ALT_PATH)
+		copy_ah_attr_from_uverbs(device, &attr->alt_ah_attr,
+					 &src->base.alt_dest);
+
+	return 0;
 }
 
 static int modify_qp(struct uverbs_attr_bundle *attrs,
@@ -1863,64 +1952,10 @@ static int modify_qp(struct uverbs_attr_bundle *attrs,
 		goto release_qp;
 	}
 
-	if (cmd->base.attr_mask & IB_QP_STATE)
-		attr->qp_state = cmd->base.qp_state;
-	if (cmd->base.attr_mask & IB_QP_CUR_STATE)
-		attr->cur_qp_state = cmd->base.cur_qp_state;
-	if (cmd->base.attr_mask & IB_QP_PATH_MTU)
-		attr->path_mtu = cmd->base.path_mtu;
-	if (cmd->base.attr_mask & IB_QP_PATH_MIG_STATE)
-		attr->path_mig_state = cmd->base.path_mig_state;
-	if (cmd->base.attr_mask & IB_QP_QKEY) {
-		if (cmd->base.qkey & IB_QP_SET_QKEY &&
-		    !(rdma_nl_get_privileged_qkey() ||
-		      rdma_uattrs_has_raw_cap(attrs))) {
-			ret = -EPERM;
-			goto release_qp;
-		}
-		attr->qkey = cmd->base.qkey;
-	}
-	if (cmd->base.attr_mask & IB_QP_RQ_PSN)
-		attr->rq_psn = cmd->base.rq_psn;
-	if (cmd->base.attr_mask & IB_QP_SQ_PSN)
-		attr->sq_psn = cmd->base.sq_psn;
-	if (cmd->base.attr_mask & IB_QP_DEST_QPN)
-		attr->dest_qp_num = cmd->base.dest_qp_num;
-	if (cmd->base.attr_mask & IB_QP_ACCESS_FLAGS)
-		attr->qp_access_flags = cmd->base.qp_access_flags;
-	if (cmd->base.attr_mask & IB_QP_PKEY_INDEX)
-		attr->pkey_index = cmd->base.pkey_index;
-	if (cmd->base.attr_mask & IB_QP_EN_SQD_ASYNC_NOTIFY)
-		attr->en_sqd_async_notify = cmd->base.en_sqd_async_notify;
-	if (cmd->base.attr_mask & IB_QP_MAX_QP_RD_ATOMIC)
-		attr->max_rd_atomic = cmd->base.max_rd_atomic;
-	if (cmd->base.attr_mask & IB_QP_MAX_DEST_RD_ATOMIC)
-		attr->max_dest_rd_atomic = cmd->base.max_dest_rd_atomic;
-	if (cmd->base.attr_mask & IB_QP_MIN_RNR_TIMER)
-		attr->min_rnr_timer = cmd->base.min_rnr_timer;
-	if (cmd->base.attr_mask & IB_QP_PORT)
-		attr->port_num = cmd->base.port_num;
-	if (cmd->base.attr_mask & IB_QP_TIMEOUT)
-		attr->timeout = cmd->base.timeout;
-	if (cmd->base.attr_mask & IB_QP_RETRY_CNT)
-		attr->retry_cnt = cmd->base.retry_cnt;
-	if (cmd->base.attr_mask & IB_QP_RNR_RETRY)
-		attr->rnr_retry = cmd->base.rnr_retry;
-	if (cmd->base.attr_mask & IB_QP_ALT_PATH) {
-		attr->alt_port_num = cmd->base.alt_port_num;
-		attr->alt_timeout = cmd->base.alt_timeout;
-		attr->alt_pkey_index = cmd->base.alt_pkey_index;
-	}
-	if (cmd->base.attr_mask & IB_QP_RATE_LIMIT)
-		attr->rate_limit = cmd->rate_limit;
-
-	if (cmd->base.attr_mask & IB_QP_AV)
-		copy_ah_attr_from_uverbs(qp->device, &attr->ah_attr,
-					 &cmd->base.dest);
-
-	if (cmd->base.attr_mask & IB_QP_ALT_PATH)
-		copy_ah_attr_from_uverbs(qp->device, &attr->alt_ah_attr,
-					 &cmd->base.alt_dest);
+	ret = ib_uverbs_copy_qp_attr(attrs, qp->device, attr, cmd,
+				     cmd->base.attr_mask);
+	if (ret)
+		goto release_qp;
 
 	ret = ib_modify_qp_with_udata(qp, attr,
 				      modify_qp_mask(qp->qp_type,

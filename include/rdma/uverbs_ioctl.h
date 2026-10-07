@@ -108,7 +108,7 @@ struct uverbs_attr_spec {
  *  object_id, attr_id, method_id
  *
  * Which is a 48 bit value, with most of the bits guaranteed to be zero. Based
- * on the current kernel support this is compressed into 16 bit key for the
+ * on the current kernel support this is compressed into 17 bit key for the
  * radix tree. Since this compression is entirely internal to the kernel the
  * below limits can be revised if the kernel gains additional data.
  *
@@ -144,7 +144,7 @@ enum uapi_radix_data {
 		UVERBS_API_METHOD_KEY_BITS + UVERBS_API_METHOD_KEY_SHIFT - 1,
 		UVERBS_API_METHOD_KEY_SHIFT),
 
-	UVERBS_API_OBJ_KEY_BITS = 5,
+	UVERBS_API_OBJ_KEY_BITS = 6,
 	UVERBS_API_OBJ_KEY_SHIFT =
 		UVERBS_API_METHOD_KEY_BITS + UVERBS_API_METHOD_KEY_SHIFT,
 	UVERBS_API_OBJ_KEY_NUM_CORE = 20,
